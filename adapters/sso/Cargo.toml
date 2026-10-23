@@ -2,6 +2,7 @@
 name = "z-auth-sso"
 version = "0.3.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Single sign-on for z-auth: OpenID Connect and OAuth2 identity providers (Google, LinkedIn, Okta, Entra ID, GitHub, …)"
 
 [features]

@@ -2,6 +2,7 @@
 name = "z-auth"
 version = "0.3.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 
 [workspace]
 members = ["adapters/postgres", "adapters/cluster", "adapters/mfa", "adapters/mfa/delivery", "adapters/sso", "testkit"]

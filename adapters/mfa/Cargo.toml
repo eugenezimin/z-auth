@@ -2,6 +2,7 @@
 name = "z-auth-mfa"
 version = "0.3.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Two-factor authentication for z-auth: TOTP, recovery codes, email and SMS codes"
 
 [features]

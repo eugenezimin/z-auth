@@ -2,6 +2,7 @@
 name = "z-auth-postgres"
 version = "0.3.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Reference PostgreSQL adapter for z-auth (sqlx)"
 
 [features]
