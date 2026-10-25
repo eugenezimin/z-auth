@@ -1,6 +1,6 @@
 [package]
 name = "z-auth-cluster"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Optional clustering for z-auth: shared mode and federation mode"
@@ -15,7 +15,7 @@ shared = []
 federation = ["shared"]
 
 [dependencies]
-z-auth     = { path = "../..", default-features = false, features = ["crypto", "serde"] }
+z-auth     = { path = "../..", version = "0.4.0", default-features = false, features = ["crypto", "serde"] }
 async-trait  = "0.1.89"
 uuid         = { version = "1", features = ["v4", "v5", "serde"] }
 chrono       = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
