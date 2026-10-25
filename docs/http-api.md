@@ -248,6 +248,7 @@ Errors are reported with an `ErrorBody`, built from an `ApiError` with `body()`.
 | `UserNotFound` | 404 | `user_not_found` |
 | `InvalidCredentials` | 401 | `invalid_credentials` |
 | `InvalidToken` | 401 | `invalid_token` |
+| `TokenExpired` | 401 | `token_expired` |
 | `TokenRevoked` | 401 | `token_revoked` |
 | `SessionExpired` | 401 | `session_expired` |
 | `SessionCompromised` | 401 | `session_compromised` |

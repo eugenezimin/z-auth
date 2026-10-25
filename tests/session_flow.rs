@@ -75,7 +75,7 @@ async fn expired_access_token_fails_verification() {
     let (_, pair) = register_and_login(&s.auth, "a@example.com", IP_A).await;
     s.clock.advance(ACCESS_TTL + Duration::from_secs(31)); // past TTL + leeway
     let err = s.auth.verifier().verify(&pair.access_token).unwrap_err();
-    assert!(matches!(err, AuthError::InvalidToken(_)), "{err:?}");
+    assert!(matches!(err, AuthError::TokenExpired), "{err:?}");
 }
 
 // ── Scenario 2 ────────────────────────────────────────────────────────────────

@@ -351,7 +351,7 @@ impl AccessTokenDecoder for Ed25519Decoder {
         }
         if expiry == ExpiryCheck::Enforce && now_secs > payload.exp.saturating_add(self.leeway_secs)
         {
-            return Err(invalid("expired"));
+            return Err(AuthError::TokenExpired);
         }
 
         let uuid = |v: &str| Uuid::parse_str(v).map_err(|_| invalid("malformed claim"));
@@ -576,7 +576,10 @@ mod tests {
         let d = decoder(&[vk(&SEED)]);
         let now = Utc::now();
         assert!(
-            d.decode(&token, now, ExpiryCheck::Enforce).is_err(),
+            matches!(
+                d.decode(&token, now, ExpiryCheck::Enforce),
+                Err(AuthError::TokenExpired)
+            ),
             "expired 100s ago"
         );
         assert!(d.decode(&token, now, ExpiryCheck::Ignore).is_ok());

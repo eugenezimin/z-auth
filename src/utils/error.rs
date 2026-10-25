@@ -58,8 +58,12 @@ pub enum AuthError {
     /// JWT signing or encoding failed.
     TokenCreationError(String),
 
-    /// The supplied JWT is invalid, expired, or unrecognised.
+    /// The supplied JWT is invalid or unrecognised.
     InvalidToken(String),
+
+    /// The supplied access token is well-formed and correctly signed, but
+    /// past its expiry (plus leeway).  Clients should refresh and retry.
+    TokenExpired,
 
     /// The token has been explicitly revoked, or its session has ended.
     TokenRevoked,
@@ -223,6 +227,7 @@ impl std::fmt::Display for AuthError {
             Self::InvalidCredentials => write!(f, "invalid email or password"),
             Self::TokenCreationError(msg) => write!(f, "token creation error: {msg}"),
             Self::InvalidToken(msg) => write!(f, "invalid token: {msg}"),
+            Self::TokenExpired => write!(f, "access token has expired"),
             Self::TokenRevoked => write!(f, "token has been revoked"),
             Self::SessionExpired => write!(f, "session has expired"),
             Self::SessionCompromised => write!(f, "session has been compromised"),

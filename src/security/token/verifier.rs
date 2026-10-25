@@ -57,8 +57,9 @@ impl TokenVerifier {
         ))
     }
 
-    /// Verify an access token.  Returns [`AuthError::InvalidToken`] for bad
-    /// or expired tokens and [`AuthError::TokenRevoked`] for denylisted ones.
+    /// Verify an access token.  Returns [`AuthError::TokenExpired`] for
+    /// expired tokens, [`AuthError::InvalidToken`] for bad ones and
+    /// [`AuthError::TokenRevoked`] for denylisted ones.
     pub fn verify(&self, token: &str) -> Result<Claims, AuthError> {
         if let Some(fence) = &self.fence {
             fence.check()?;
