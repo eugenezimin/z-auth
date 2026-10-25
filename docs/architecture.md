@@ -148,7 +148,7 @@ The `Repositories` struct groups the six required repositories. Every field is r
 | `.extension(Arc<dyn Extension>)` | none | Plug in an optional component. May be called repeatedly; extensions are wired and driven in registration order |
 | `.permissions(Arc<dyn PermissionRepository>)` | none | Required in the `permissions` and `combined` modes, unless an extension supplies the permission service |
 | `.permission_codec(Arc<dyn PermissionCodec>)` | `BitsetPermissionCodec` | How permissions are encoded into tokens |
-| `.password_hasher(Arc<dyn PasswordHasher>)` | `Argon2Hasher` (feature `argon2`) | Password hashing and verification |
+| `.password_hasher(Arc<dyn PasswordHasher>)` | `Argon2Hasher` (feature `argon2`) | Password hashing and verification. `login` calls `verify_dummy` for an unknown email or an account without a password, so timing does not reveal registered emails; override it in custom slow hashers |
 | `.access_issuer(Arc<dyn AccessTokenIssuer>)` | `Ed25519Issuer` from `config.jwt` (feature `crypto`) | Mints access tokens |
 | `.access_decoder(Arc<dyn AccessTokenDecoder>)` | `Ed25519Decoder` over the key ring (feature `crypto`) | Verifies access tokens |
 | `.refresh_codec(Arc<dyn RefreshTokenCodec>)` | `HmacRefreshCodec` from `config.session` (feature `crypto`) | Issues and checks refresh tokens |

@@ -12,6 +12,8 @@ use argon2::{
     },
 };
 
+use std::sync::OnceLock;
+
 use crate::identity::credentials::hasher::PasswordHasher;
 use crate::utils::error::AuthError;
 
@@ -39,6 +41,15 @@ impl PasswordHasher for Argon2Hasher {
             Ok(()) => Ok(true),
             Err(argon2::password_hash::Error::Password) => Ok(false),
             Err(e) => Err(AuthError::HashingError(e.to_string())),
+        }
+    }
+
+    /// Verifies against a fixed hash made once with the same parameters, so
+    /// it costs what a real verification costs.
+    fn verify_dummy(&self, plaintext: &str) {
+        static DUMMY: OnceLock<Option<String>> = OnceLock::new();
+        if let Some(hash) = DUMMY.get_or_init(|| self.hash("z-auth timing equaliser").ok()) {
+            let _ = self.verify(plaintext, hash);
         }
     }
 }

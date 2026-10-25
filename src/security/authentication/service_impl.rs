@@ -375,14 +375,18 @@ impl AuthenticationService for AuthenticationServiceImpl {
         let account = self
             .users
             .find_with_roles_by_email(&normalize_email(&credentials.email))
-            .await?
-            .ok_or(AuthError::InvalidCredentials)?;
+            .await?;
+        // Unknown email or no password: spend a verification anyway, so the
+        // response time does not tell which emails are registered.
+        let Some((account, hash)) = account.and_then(|a| {
+            let hash = a.user.password_hash.clone()?;
+            Some((a, hash))
+        }) else {
+            self.hasher.verify_dummy(&credentials.password);
+            return Err(AuthError::InvalidCredentials);
+        };
         let user = &account.user;
-        let hash = user
-            .password_hash
-            .as_deref()
-            .ok_or(AuthError::InvalidCredentials)?;
-        if !self.hasher.verify(&credentials.password, hash)? {
+        if !self.hasher.verify(&credentials.password, &hash)? {
             return Err(AuthError::InvalidCredentials);
         }
         if !user.is_active {
