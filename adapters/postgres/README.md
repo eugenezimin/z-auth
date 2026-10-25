@@ -20,6 +20,7 @@ Everything a host needs is re-exported from the crate root, except `connect_opti
 | `SESSION_STORE_MIGRATOR`, `run_session_store_migrations(&pool)` | static, async function | `federation` | The self-contained session-store schema in `migrations_session_store/` for non-authority services |
 | `MFA_MIGRATOR`, `run_mfa_migrations(&pool)` | static, async function | `mfa` | The mfa set in `migrations_mfa/`; the function applies the core set first |
 | `EXTERNAL_MIGRATOR`, `run_external_migrations(&pool)` | static, async function | `external-identity` | The external-identity set in `migrations_external/`; the function applies the core set first |
+| `tx` | module | none | Every repository statement as a free function over `&mut PgConnection` (`tx::users`, `tx::roles`, `tx::user_roles`, `tx::permissions`, `tx::revocations`, `tx::keys`, `tx::sessions`), so a host can change z-auth state and its own tables in one transaction. Adds `users::create_with_id`, `users::set_verified` and `roles::create_with_id`, which have no port method |
 
 The repository types each wrap a `PgPool` and are built with `new(pool)`. Every one of them implements exactly one port.
 
@@ -37,6 +38,20 @@ The repository types each wrap a `PgPool` and are built with `new(pool)`. Every 
 | `PgMfaRepository` | `MfaRepository` | `z_auth_mfa::repository` | `mfa` |
 | `PgExternalIdentityRepository` | `ExternalIdentityRepository` | `z_auth::identity::external` | `external-identity` |
 | `PgFlowStateRepository` | `FlowStateRepository` | `z_auth::security::authentication` | `external-identity` |
+
+### One transaction with the host
+
+The repositories each run their statements on a connection of their own, so a host cannot make a z-auth write and its own write (a profile row, a transactional-outbox event) commit together through them. The `tx` module exposes the same statements as free functions over a borrowed connection; every repository is a thin wrapper around them, so both paths share the SQL and the error mapping.
+
+```rust,ignore
+let mut tx = pool.begin().await?;
+let user = z_auth_postgres::tx::users::create_with_id(&mut tx, id, &new_user).await?;
+z_auth_postgres::tx::user_roles::assign(&mut tx, user.id, role_id).await?;
+sqlx::query("INSERT INTO outbox (...) VALUES (...)").execute(&mut *tx).await?;
+tx.commit().await?;
+```
+
+Functions documented as running several statements (`permissions::create`, `permissions::replace_*_grant`, `permissions::load_catalog`, `sessions::create`, `sessions::rotate`) must run inside a transaction. Queries are unqualified, so the connection's `search_path` selects the schema. Writes made this way bypass z-auth's services: the host is responsible for what those services would otherwise do, such as ending sessions and recording a revocation when it deactivates a user, and for keeping the in-memory denylist, key ring and catalog of running instances current.
 
 `PgPermissionRepository` is not part of `repositories(&pool)` because the core treats it as optional. The same holds for `PgExternalIdentityRepository` and `PgFlowStateRepository`, which are passed together with `.external_identities(...)` when the host signs users in through external identity providers. It is passed to the builder with `.permissions(...)` and is required when `AUTH_AUTHZ_MODE` is `permissions` or `combined`. `PgSyncStore` also has an inherent `next_account_version()` method that draws the next account-snapshot version on the authority.
 
@@ -326,7 +341,7 @@ Assigning a role that a user already holds does not produce `RoleAlreadyAssigned
 
 ## Module layout
 
-The crate is small enough to read end to end. SQL lives in constants next to the repository that uses it, rows are decoded into private structs and converted into domain types at the boundary, and the cluster, mfa and external-identity code compiles only with its feature.
+The crate is small enough to read end to end. SQL lives in constants under `queries/`, is executed by the free functions in `tx/` that the repositories wrap, rows are decoded into private structs and converted into domain types at the boundary, and the cluster, mfa and external-identity code compiles only with its feature.
 
 ```text
 adapters/postgres/
@@ -352,6 +367,7 @@ adapters/postgres/
 │   ├── codes.rs                    generation u32 and i32 conversion
 │   ├── enums.rs                    sqlx mirrors of the core ENUM types
 │   ├── rows.rs                     row structs and their domain conversions
+│   ├── tx/                         every statement over &mut PgConnection; the repositories wrap it
 │   ├── user_repository.rs
 │   ├── role_repository.rs
 │   ├── user_role_repository.rs

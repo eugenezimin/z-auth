@@ -19,6 +19,12 @@
 //! auth.start().await?;   // load state; then auth.tick() periodically
 //! ```
 //!
+//! ## One transaction with the host's own writes
+//!
+//! Every statement is also available as a free function over a borrowed
+//! connection in [`tx`], so a host can change z-auth state and its own
+//! tables (an outbox, a profile table) atomically.
+//!
 //! ## Features
 //!
 //! - `shared` — the node registry ([`PgNodeRepository`]) for
@@ -77,6 +83,7 @@ mod revocation_repository;
 mod role_repository;
 mod rows;
 mod session_repository;
+pub mod tx;
 mod user_repository;
 mod user_role_repository;
 

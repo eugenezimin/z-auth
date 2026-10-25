@@ -1,14 +1,14 @@
 //! PostgreSQL implementation of [`KeyRepository`]: published verifying
-//! keys.  All SQL lives in [`crate::queries::key_queries`].
+//! keys.  The statements live in [`crate::tx::keys`].
 
 use async_trait::async_trait;
 use sqlx::PgPool;
+use sqlx::pool::PoolConnection;
 use z_auth::AuthError;
 use z_auth::security::token::{KeyRepository, NewVerifyingKey, VerifyingKeyRecord};
 
 use crate::errors::map_sqlx_error;
-use crate::queries::key_queries as q;
-use crate::rows::KeyRow;
+use crate::tx::keys;
 
 /// PostgreSQL-backed store of published verifying keys.
 pub struct PgKeyRepository {
@@ -19,35 +19,23 @@ impl PgKeyRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    async fn conn(&self) -> Result<PoolConnection<sqlx::Postgres>, AuthError> {
+        self.pool.acquire().await.map_err(map_sqlx_error)
+    }
 }
 
 #[async_trait]
 impl KeyRepository for PgKeyRepository {
     async fn publish(&self, key: &NewVerifyingKey) -> Result<VerifyingKeyRecord, AuthError> {
-        let row: KeyRow = sqlx::query_as(q::PUBLISH_KEY)
-            .bind(&key.kid)
-            .bind(key.public_key.as_slice())
-            .bind(key.published_by)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        row.try_into()
+        keys::publish(&mut *self.conn().await?, key).await
     }
 
     async fn revoke(&self, kid: &str) -> Result<Option<VerifyingKeyRecord>, AuthError> {
-        let row: Option<KeyRow> = sqlx::query_as(q::REVOKE_KEY)
-            .bind(kid)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        row.map(TryInto::try_into).transpose()
+        keys::revoke(&mut *self.conn().await?, kid).await
     }
 
     async fn list(&self) -> Result<Vec<VerifyingKeyRecord>, AuthError> {
-        let rows: Vec<KeyRow> = sqlx::query_as(q::LIST_KEYS)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        rows.into_iter().map(TryInto::try_into).collect()
+        keys::list(&mut *self.conn().await?).await
     }
 }

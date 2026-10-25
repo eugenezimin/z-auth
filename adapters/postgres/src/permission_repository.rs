@@ -1,23 +1,22 @@
 //! PostgreSQL implementation of [`PermissionRepository`] — the permission
-//! catalog and user / role grants.  All SQL lives in
-//! [`crate::queries::permission_queries`].
+//! catalog and user / role grants.  The statements live in
+//! [`crate::tx::permissions`].
 //!
 //! Called by z-auth only for admin operations, at startup (catalog load)
 //! and at login / refresh (`effective_grants`) — never on token verification.
 
 use async_trait::async_trait;
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::PgPool;
+use sqlx::pool::PoolConnection;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::security::authorization::{
     EffectiveGrants, NewPermission, Permission, PermissionAssignment, PermissionCatalog,
-    PermissionGrant, PermissionKind, PermissionRepository,
+    PermissionRepository,
 };
 
-use crate::enums::PgPermissionKind;
 use crate::errors::map_sqlx_error;
-use crate::queries::permission_queries as q;
-use crate::rows::{GrantRow, OptionRow, PermissionRow};
+use crate::tx::permissions;
 
 /// PostgreSQL-backed permission repository.
 pub struct PgPermissionRepository {
@@ -29,130 +28,18 @@ impl PgPermissionRepository {
         Self { pool }
     }
 
-    /// Attach the options to a permission row.
-    async fn with_options(
-        &self,
-        row: Option<PermissionRow>,
-    ) -> Result<Option<Permission>, AuthError> {
-        let Some(row) = row else {
-            return Ok(None);
-        };
-        let options: Vec<OptionRow> = sqlx::query_as(q::LIST_OPTIONS_OF)
-            .bind(row.id())
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        row.assemble(&options).map(Some)
+    async fn conn(&self) -> Result<PoolConnection<sqlx::Postgres>, AuthError> {
+        self.pool.acquire().await.map_err(map_sqlx_error)
     }
-
-    async fn require(&self, id: Uuid) -> Result<Permission, AuthError> {
-        let row: Option<PermissionRow> = sqlx::query_as(q::FIND_PERMISSION_BY_ID)
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        self.with_options(row)
-            .await?
-            .ok_or(AuthError::PermissionNotFound)
-    }
-
-    /// An owner's grant rows (ordered by permission), folded into one
-    /// assignment per permission.
-    async fn list_grants(
-        &self,
-        sql: &str,
-        owner: Uuid,
-    ) -> Result<Vec<PermissionAssignment>, AuthError> {
-        let rows: Vec<(Uuid, Option<Uuid>, Option<String>)> = sqlx::query_as(sql)
-            .bind(owner)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        let mut assignments: Vec<PermissionAssignment> = Vec::new();
-        for (permission_id, option_id, text) in rows {
-            let assignment = match assignments.last_mut() {
-                Some(last) if last.permission_id == permission_id => last,
-                _ => {
-                    assignments.push(PermissionAssignment {
-                        permission_id,
-                        option_ids: Vec::new(),
-                        text,
-                    });
-                    assignments.last_mut().expect("just pushed")
-                }
-            };
-            assignment.option_ids.extend(option_id);
-        }
-        Ok(assignments)
-    }
-}
-
-/// Delete the owner's grant of a permission, then insert the new rows.
-async fn replace_grant(
-    tx: &mut Transaction<'_, Postgres>,
-    delete: &str,
-    insert: &str,
-    owner: Uuid,
-    assignment: &PermissionAssignment,
-) -> Result<(), AuthError> {
-    sqlx::query(delete)
-        .bind(owner)
-        .bind(assignment.permission_id)
-        .execute(&mut **tx)
-        .await
-        .map_err(map_sqlx_error)?;
-    let option_ids: Vec<Option<Uuid>> = if assignment.option_ids.is_empty() {
-        vec![None]
-    } else {
-        assignment.option_ids.iter().copied().map(Some).collect()
-    };
-    for option_id in option_ids {
-        sqlx::query(insert)
-            .bind(owner)
-            .bind(assignment.permission_id)
-            .bind(option_id)
-            .bind(&assignment.text)
-            .execute(&mut **tx)
-            .await
-            .map_err(map_sqlx_error)?;
-    }
-    Ok(())
 }
 
 #[async_trait]
 impl PermissionRepository for PgPermissionRepository {
     async fn create(&self, permission: &NewPermission) -> Result<Permission, AuthError> {
-        let (has_position, max_length) = match permission.kind {
-            PermissionKind::Bool => (true, None),
-            PermissionKind::Text { max_length } => (
-                true,
-                Some(i32::try_from(max_length).map_err(|_| {
-                    AuthError::InvalidPermissionValue("max_length too large".into())
-                })?),
-            ),
-            PermissionKind::Single | PermissionKind::Multi => (false, None),
-        };
-
         let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
-        let (id,): (Uuid,) = sqlx::query_as(q::INSERT_PERMISSION)
-            .bind(&permission.code)
-            .bind(PgPermissionKind::from(permission.kind))
-            .bind(&permission.description)
-            .bind(has_position)
-            .bind(max_length)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(map_sqlx_error)?;
-        for option in &permission.options {
-            sqlx::query(q::INSERT_OPTION)
-                .bind(id)
-                .bind(option)
-                .execute(&mut *tx)
-                .await
-                .map_err(map_sqlx_error)?;
-        }
+        let created = permissions::create(&mut tx, permission).await?;
         tx.commit().await.map_err(map_sqlx_error)?;
-        self.require(id).await
+        Ok(created)
     }
 
     async fn add_option(
@@ -160,55 +47,22 @@ impl PermissionRepository for PgPermissionRepository {
         permission_id: Uuid,
         option_code: &str,
     ) -> Result<Permission, AuthError> {
-        sqlx::query(q::INSERT_OPTION)
-            .bind(permission_id)
-            .bind(option_code)
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        self.require(permission_id).await
+        permissions::add_option(&mut *self.conn().await?, permission_id, option_code).await
     }
 
     async fn delete(&self, permission_id: Uuid) -> Result<bool, AuthError> {
-        let result = sqlx::query(q::DELETE_PERMISSION)
-            .bind(permission_id)
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(result.rows_affected() > 0)
+        permissions::delete(&mut *self.conn().await?, permission_id).await
     }
 
     async fn find_by_code(&self, code: &str) -> Result<Option<Permission>, AuthError> {
-        let row: Option<PermissionRow> = sqlx::query_as(q::FIND_PERMISSION_BY_CODE)
-            .bind(code)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        self.with_options(row).await
+        permissions::find_by_code(&mut *self.conn().await?, code).await
     }
 
     async fn load_catalog(&self) -> Result<PermissionCatalog, AuthError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
-        let rows: Vec<PermissionRow> = sqlx::query_as(q::LIST_PERMISSIONS)
-            .fetch_all(&mut *tx)
-            .await
-            .map_err(map_sqlx_error)?;
-        let options: Vec<OptionRow> = sqlx::query_as(q::LIST_OPTIONS)
-            .fetch_all(&mut *tx)
-            .await
-            .map_err(map_sqlx_error)?;
-        let (version,): (i64,) = sqlx::query_as(q::CATALOG_VERSION)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(map_sqlx_error)?;
+        let catalog = permissions::load_catalog(&mut tx).await?;
         tx.commit().await.map_err(map_sqlx_error)?;
-        Ok(PermissionCatalog {
-            version: version as u64,
-            permissions: rows
-                .into_iter()
-                .map(|r| r.assemble(&options))
-                .collect::<Result<_, _>>()?,
-        })
+        Ok(catalog)
     }
 
     async fn replace_user_grant(
@@ -217,14 +71,7 @@ impl PermissionRepository for PgPermissionRepository {
         assignment: &PermissionAssignment,
     ) -> Result<(), AuthError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
-        replace_grant(
-            &mut tx,
-            q::DELETE_USER_GRANT,
-            q::INSERT_USER_GRANT,
-            user_id,
-            assignment,
-        )
-        .await?;
+        permissions::replace_user_grant(&mut tx, user_id, assignment).await?;
         tx.commit().await.map_err(map_sqlx_error)
     }
 
@@ -233,13 +80,7 @@ impl PermissionRepository for PgPermissionRepository {
         user_id: Uuid,
         permission_id: Uuid,
     ) -> Result<bool, AuthError> {
-        let result = sqlx::query(q::DELETE_USER_GRANT)
-            .bind(user_id)
-            .bind(permission_id)
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(result.rows_affected() > 0)
+        permissions::clear_user_grant(&mut *self.conn().await?, user_id, permission_id).await
     }
 
     async fn replace_role_grant(
@@ -248,14 +89,7 @@ impl PermissionRepository for PgPermissionRepository {
         assignment: &PermissionAssignment,
     ) -> Result<(), AuthError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
-        replace_grant(
-            &mut tx,
-            q::DELETE_ROLE_GRANT,
-            q::INSERT_ROLE_GRANT,
-            role_id,
-            assignment,
-        )
-        .await?;
+        permissions::replace_role_grant(&mut tx, role_id, assignment).await?;
         tx.commit().await.map_err(map_sqlx_error)
     }
 
@@ -263,14 +97,14 @@ impl PermissionRepository for PgPermissionRepository {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<PermissionAssignment>, AuthError> {
-        self.list_grants(q::LIST_USER_GRANTS, user_id).await
+        permissions::list_user_grants(&mut *self.conn().await?, user_id).await
     }
 
     async fn list_role_grants(
         &self,
         role_id: Uuid,
     ) -> Result<Vec<PermissionAssignment>, AuthError> {
-        self.list_grants(q::LIST_ROLE_GRANTS, role_id).await
+        permissions::list_role_grants(&mut *self.conn().await?, role_id).await
     }
 
     async fn clear_role_grant(
@@ -278,13 +112,7 @@ impl PermissionRepository for PgPermissionRepository {
         role_id: Uuid,
         permission_id: Uuid,
     ) -> Result<bool, AuthError> {
-        let result = sqlx::query(q::DELETE_ROLE_GRANT)
-            .bind(role_id)
-            .bind(permission_id)
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(result.rows_affected() > 0)
+        permissions::clear_role_grant(&mut *self.conn().await?, role_id, permission_id).await
     }
 
     async fn effective_grants(
@@ -292,22 +120,6 @@ impl PermissionRepository for PgPermissionRepository {
         user_id: Uuid,
         include_role_grants: bool,
     ) -> Result<EffectiveGrants, AuthError> {
-        let rows: Vec<GrantRow> = sqlx::query_as(q::EFFECTIVE_GRANTS)
-            .bind(user_id)
-            .bind(include_role_grants)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        let (version,): (i64,) = sqlx::query_as(q::CATALOG_VERSION)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(EffectiveGrants {
-            catalog_version: version as u64,
-            grants: rows
-                .into_iter()
-                .map(PermissionGrant::try_from)
-                .collect::<Result<_, _>>()?,
-        })
+        permissions::effective_grants(&mut *self.conn().await?, user_id, include_role_grants).await
     }
 }

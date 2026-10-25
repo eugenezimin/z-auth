@@ -15,6 +15,20 @@ pub const INSERT_USER: &str = r#"
         is_active, is_verified, created_at, updated_at
 "#;
 
+/// [`INSERT_USER`] with a caller-chosen id (`$1`).
+pub const INSERT_USER_WITH_ID: &str = r#"
+    INSERT INTO identity_users (id, email, password_hash, username, first_name, last_name, is_verified)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING
+        id, email, password_hash, username,
+        first_name, last_name, avatar_url,
+        is_active, is_verified, created_at, updated_at
+"#;
+
+pub const SET_VERIFIED: &str = r#"
+    UPDATE identity_users SET is_verified = $2, updated_at = now() WHERE id = $1
+"#;
+
 pub const FIND_USER_BY_ID: &str = r#"
     SELECT
         id, email, password_hash, username,

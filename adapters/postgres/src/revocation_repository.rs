@@ -1,17 +1,16 @@
 //! PostgreSQL implementation of [`RevocationRepository`] — the persisted
-//! denylist.  All SQL lives in [`crate::queries::revocation_queries`];
+//! denylist.  The statements live in [`crate::tx::revocations`];
 //! `revoked_at` / `expires_at` are stamped by the database.
 
 use async_trait::async_trait;
 use sqlx::PgPool;
+use sqlx::pool::PoolConnection;
 use uuid::Uuid;
 use z_auth::AuthError;
-use z_auth::security::token::{NewRevocation, Revocation, RevocationRepository, RevocationScope};
+use z_auth::security::token::{NewRevocation, Revocation, RevocationRepository};
 
-use crate::enums::{PgRevocationReason, PgRevocationScope};
 use crate::errors::map_sqlx_error;
-use crate::queries::revocation_queries;
-use crate::rows::RevocationRow;
+use crate::tx::revocations;
 
 /// PostgreSQL-backed revocation repository.
 pub struct PgRevocationRepository {
@@ -22,51 +21,27 @@ impl PgRevocationRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    async fn conn(&self) -> Result<PoolConnection<sqlx::Postgres>, AuthError> {
+        self.pool.acquire().await.map_err(map_sqlx_error)
+    }
 }
 
 #[async_trait]
 impl RevocationRepository for PgRevocationRepository {
     async fn insert(&self, revocation: &NewRevocation) -> Result<Revocation, AuthError> {
-        let (scope, subject) = match revocation.scope {
-            RevocationScope::Session(id) => (PgRevocationScope::Session, id),
-            RevocationScope::User(id) => (PgRevocationScope::User, id),
-            RevocationScope::Token(jti) => (PgRevocationScope::Token, jti),
-        };
-        let row: RevocationRow = sqlx::query_as(revocation_queries::INSERT_REVOCATION)
-            .bind(scope)
-            .bind(subject)
-            .bind(PgRevocationReason::from(revocation.reason))
-            .bind(revocation.origin_node)
-            .bind(revocation.ttl)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(row.into())
+        revocations::insert(&mut *self.conn().await?, revocation).await
     }
 
     async fn mark_enforced(&self, id: Uuid, by: Uuid) -> Result<Option<Revocation>, AuthError> {
-        let row: Option<RevocationRow> = sqlx::query_as(revocation_queries::MARK_ENFORCED)
-            .bind(id)
-            .bind(by)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(row.map(Into::into))
+        revocations::mark_enforced(&mut *self.conn().await?, id, by).await
     }
 
     async fn list_active(&self) -> Result<Vec<Revocation>, AuthError> {
-        let rows: Vec<RevocationRow> = sqlx::query_as(revocation_queries::LIST_ACTIVE)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(rows.into_iter().map(Into::into).collect())
+        revocations::list_active(&mut *self.conn().await?).await
     }
 
     async fn purge_expired(&self) -> Result<u64, AuthError> {
-        let result = sqlx::query(revocation_queries::PURGE_EXPIRED)
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(result.rows_affected())
+        revocations::purge_expired(&mut *self.conn().await?).await
     }
 }
