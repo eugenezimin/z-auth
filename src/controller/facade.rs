@@ -46,6 +46,10 @@ use crate::identity::credentials::PasswordHasher;
 use crate::identity::external::{
     ExternalIdentityEvents, ExternalIdentityRepository, NoopExternalIdentityEvents,
 };
+use crate::identity::organization::{
+    OrganizationRepository, OrganizationService, OrganizationServiceImpl,
+};
+use crate::identity::profile::{ProfileRepository, ProfileService, ProfileServiceImpl};
 use crate::identity::user::{UserService, UserServiceImpl};
 use crate::security::authentication::{
     AccountLinkService, AccountLinkServiceImpl, AuthenticationService, AuthenticationServiceImpl,
@@ -125,6 +129,8 @@ pub struct ZAuth {
     authentication: Arc<dyn AuthenticationService>,
     account_links: Arc<dyn AccountLinkService>,
     flows: Option<Arc<dyn FlowStateRepository>>,
+    profiles: Arc<dyn ProfileService>,
+    organizations: Arc<dyn OrganizationService>,
     revocation: Arc<dyn TokenRevocationService>,
     verifier: Arc<TokenVerifier>,
 }
@@ -165,6 +171,17 @@ impl ZAuth {
     /// protocol adapters (e.g. z-auth-sso) to keep redirect state in.
     pub fn flow_states(&self) -> Option<&Arc<dyn FlowStateRepository>> {
         self.flows.as_ref()
+    }
+    /// Users' phone numbers and addresses.  Fails with [`AuthError::Config`]
+    /// unless the builder got [`profiles`](ZAuthBuilder::profiles).
+    pub fn profiles(&self) -> &dyn ProfileService {
+        self.profiles.as_ref()
+    }
+    /// The organization catalog and users' memberships.  Fails with
+    /// [`AuthError::Config`] unless the builder got
+    /// [`organizations`](ZAuthBuilder::organizations).
+    pub fn organizations(&self) -> &dyn OrganizationService {
+        self.organizations.as_ref()
     }
     pub fn revocation(&self) -> &dyn TokenRevocationService {
         self.revocation.as_ref()
@@ -281,6 +298,8 @@ pub struct ZAuthBuilder {
         Arc<dyn FlowStateRepository>,
     )>,
     external_events: Option<Arc<dyn ExternalIdentityEvents>>,
+    profiles: Option<Arc<dyn ProfileRepository>>,
+    organizations: Option<Arc<dyn OrganizationRepository>>,
 }
 
 impl ZAuthBuilder {
@@ -299,6 +318,8 @@ impl ZAuthBuilder {
             clock: None,
             external: None,
             external_events: None,
+            profiles: None,
+            organizations: None,
         }
     }
 
@@ -365,6 +386,18 @@ impl ZAuthBuilder {
     /// Told about every link and unlink.  Defaults to none.
     pub fn external_identity_events(mut self, events: Arc<dyn ExternalIdentityEvents>) -> Self {
         self.external_events = Some(events);
+        self
+    }
+    /// Enable users' optional phone numbers and addresses
+    /// ([`ZAuth::profiles`]).
+    pub fn profiles(mut self, repo: Arc<dyn ProfileRepository>) -> Self {
+        self.profiles = Some(repo);
+        self
+    }
+    /// Enable the organization catalog and users' memberships
+    /// ([`ZAuth::organizations`]).
+    pub fn organizations(mut self, repo: Arc<dyn OrganizationRepository>) -> Self {
+        self.organizations = Some(repo);
         self
     }
 
@@ -597,6 +630,8 @@ impl ZAuthBuilder {
             authentication,
             account_links,
             flows,
+            profiles: Arc::new(ProfileServiceImpl::new(self.profiles)),
+            organizations: Arc::new(OrganizationServiceImpl::new(self.organizations)),
             revocation,
             verifier,
             node_id,

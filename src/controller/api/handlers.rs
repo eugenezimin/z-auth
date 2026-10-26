@@ -20,17 +20,23 @@
 use uuid::Uuid;
 
 use crate::controller::api::dto::{
-    CompleteLoginRequest, ConfirmLinkRequest, ExternalIdentityResponse, LoginRequest,
-    LoginResponse, PermissionCatalogResponse, RefreshRequest, RegisterRequest, RevokeRequest,
-    RevokeResponse, TokenPairResponse, UserResponse,
+    AddressRequest, AddressResponse, CompleteLoginRequest, ConfirmLinkRequest, DepartmentRequest,
+    DepartmentResponse, ExternalIdentityResponse, LoginRequest, LoginResponse,
+    MembershipPageResponse, MembershipRequest, MembershipResponse, OrganizationPageResponse,
+    OrganizationRequest, OrganizationResponse, PermissionCatalogResponse, PhoneRequest,
+    PhoneResponse, RefreshRequest, RegisterRequest, RevokeRequest, RevokeResponse,
+    TokenPairResponse, UserResponse,
 };
 use crate::controller::api::error::ApiError;
+use crate::identity::organization::{MemberQuery, OrganizationQuery, OrganizationService};
+use crate::identity::profile::ProfileService;
 use crate::identity::user::service::UserService;
 use crate::security::authentication::linking::AccountLinkService;
 use crate::security::authentication::model::ClientContext;
 use crate::security::authentication::service::AuthenticationService;
 use crate::security::authorization::service::PermissionService;
 use crate::security::token::service::TokenRevocationService;
+use crate::utils::error::AuthError;
 
 /// `POST /register`
 pub async fn register(
@@ -92,6 +98,302 @@ pub async fn unlink_external_identity(
 ) -> Result<ExternalIdentityResponse, ApiError> {
     let claims = auth.verify_access_token(bearer).await?;
     Ok(links.unlink(claims.sid, identity_id).await?.into())
+}
+
+// ── Profile (the bearer's own) ────────────────────────────────────────────────
+//
+// Every handler below takes a valid bearer access token and acts for its
+// user.
+
+/// `GET /me/phones` — primary first, then oldest first.
+pub async fn phones(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+) -> Result<Vec<PhoneResponse>, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    let phones = profiles.phones(claims.sub).await?;
+    Ok(phones.into_iter().map(Into::into).collect())
+}
+
+/// `POST /me/phones` — the first phone becomes primary.
+pub async fn add_phone(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    req: PhoneRequest,
+) -> Result<PhoneResponse, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles.add_phone(claims.sub, req.into()).await?.into())
+}
+
+/// `PUT /me/phones/{id}`
+pub async fn replace_phone(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    phone_id: Uuid,
+    req: PhoneRequest,
+) -> Result<PhoneResponse, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles
+        .replace_phone(claims.sub, phone_id, req.into())
+        .await?
+        .into())
+}
+
+/// `POST /me/phones/{id}/primary`
+pub async fn set_primary_phone(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    phone_id: Uuid,
+) -> Result<(), ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles.set_primary_phone(claims.sub, phone_id).await?)
+}
+
+/// `DELETE /me/phones/{id}`
+pub async fn delete_phone(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    phone_id: Uuid,
+) -> Result<(), ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles.delete_phone(claims.sub, phone_id).await?)
+}
+
+/// `GET /me/addresses` — primary first, then oldest first.
+pub async fn addresses(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+) -> Result<Vec<AddressResponse>, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    let addresses = profiles.addresses(claims.sub).await?;
+    Ok(addresses.into_iter().map(Into::into).collect())
+}
+
+/// `POST /me/addresses` — the first address becomes primary.
+pub async fn add_address(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    req: AddressRequest,
+) -> Result<AddressResponse, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles.add_address(claims.sub, req.into()).await?.into())
+}
+
+/// `PUT /me/addresses/{id}`
+pub async fn replace_address(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    address_id: Uuid,
+    req: AddressRequest,
+) -> Result<AddressResponse, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles
+        .replace_address(claims.sub, address_id, req.into())
+        .await?
+        .into())
+}
+
+/// `POST /me/addresses/{id}/primary`
+pub async fn set_primary_address(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    address_id: Uuid,
+) -> Result<(), ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles.set_primary_address(claims.sub, address_id).await?)
+}
+
+/// `DELETE /me/addresses/{id}`
+pub async fn delete_address(
+    auth: &dyn AuthenticationService,
+    profiles: &dyn ProfileService,
+    bearer: &str,
+    address_id: Uuid,
+) -> Result<(), ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(profiles.delete_address(claims.sub, address_id).await?)
+}
+
+/// `GET /me/organizations` — the bearer's memberships, primary first.
+pub async fn memberships(
+    auth: &dyn AuthenticationService,
+    organizations: &dyn OrganizationService,
+    bearer: &str,
+) -> Result<Vec<MembershipResponse>, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    let memberships = organizations.memberships(claims.sub).await?;
+    Ok(memberships.into_iter().map(Into::into).collect())
+}
+
+/// `POST /me/organizations` — join an organization of the catalog,
+/// optionally one of its departments.  The first membership becomes
+/// primary.
+pub async fn add_membership(
+    auth: &dyn AuthenticationService,
+    organizations: &dyn OrganizationService,
+    bearer: &str,
+    req: MembershipRequest,
+) -> Result<MembershipResponse, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(organizations
+        .add_membership(claims.sub, req.into())
+        .await?
+        .into())
+}
+
+/// `PUT /me/organizations/{id}`
+pub async fn update_membership(
+    auth: &dyn AuthenticationService,
+    organizations: &dyn OrganizationService,
+    bearer: &str,
+    membership_id: Uuid,
+    req: MembershipRequest,
+) -> Result<MembershipResponse, ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(organizations
+        .update_membership(claims.sub, membership_id, req.into())
+        .await?
+        .into())
+}
+
+/// `POST /me/organizations/{id}/primary`
+pub async fn set_primary_membership(
+    auth: &dyn AuthenticationService,
+    organizations: &dyn OrganizationService,
+    bearer: &str,
+    membership_id: Uuid,
+) -> Result<(), ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(organizations
+        .set_primary_membership(claims.sub, membership_id)
+        .await?)
+}
+
+/// `DELETE /me/organizations/{id}`
+pub async fn delete_membership(
+    auth: &dyn AuthenticationService,
+    organizations: &dyn OrganizationService,
+    bearer: &str,
+    membership_id: Uuid,
+) -> Result<(), ApiError> {
+    let claims = auth.verify_access_token(bearer).await?;
+    Ok(organizations
+        .delete_membership(claims.sub, membership_id)
+        .await?)
+}
+
+// ── Organization catalog (administrative) ─────────────────────────────────────
+//
+// No bearer: the host authorizes these routes itself (e.g. with
+// `Authorizer`), as it does for `revoke`.
+
+/// `GET /organizations?search=&limit=&offset=` — ordered by name.
+pub async fn organizations(
+    organizations: &dyn OrganizationService,
+    query: OrganizationQuery,
+) -> Result<OrganizationPageResponse, ApiError> {
+    Ok(organizations.list(query).await?.into())
+}
+
+/// `POST /organizations`
+pub async fn create_organization(
+    organizations: &dyn OrganizationService,
+    req: OrganizationRequest,
+) -> Result<OrganizationResponse, ApiError> {
+    Ok(organizations.create(req.into()).await?.into())
+}
+
+/// `GET /organizations/{id}`
+pub async fn organization(
+    organizations: &dyn OrganizationService,
+    organization_id: Uuid,
+) -> Result<OrganizationResponse, ApiError> {
+    let organization = organizations
+        .find(organization_id)
+        .await?
+        .ok_or(AuthError::OrganizationNotFound)?;
+    Ok(organization.into())
+}
+
+/// `PUT /organizations/{id}`
+pub async fn update_organization(
+    organizations: &dyn OrganizationService,
+    organization_id: Uuid,
+    req: OrganizationRequest,
+) -> Result<OrganizationResponse, ApiError> {
+    Ok(organizations
+        .update(organization_id, req.into())
+        .await?
+        .into())
+}
+
+/// `DELETE /organizations/{id}` — with its departments and memberships.
+pub async fn delete_organization(
+    organizations: &dyn OrganizationService,
+    organization_id: Uuid,
+) -> Result<(), ApiError> {
+    Ok(organizations.delete(organization_id).await?)
+}
+
+/// `GET /organizations/{id}/departments` — ordered by name.
+pub async fn departments(
+    organizations: &dyn OrganizationService,
+    organization_id: Uuid,
+) -> Result<Vec<DepartmentResponse>, ApiError> {
+    let departments = organizations.departments(organization_id).await?;
+    Ok(departments.into_iter().map(Into::into).collect())
+}
+
+/// `POST /organizations/{id}/departments`
+pub async fn create_department(
+    organizations: &dyn OrganizationService,
+    organization_id: Uuid,
+    req: DepartmentRequest,
+) -> Result<DepartmentResponse, ApiError> {
+    Ok(organizations
+        .create_department(organization_id, req.into())
+        .await?
+        .into())
+}
+
+/// `PUT /departments/{id}`
+pub async fn update_department(
+    organizations: &dyn OrganizationService,
+    department_id: Uuid,
+    req: DepartmentRequest,
+) -> Result<DepartmentResponse, ApiError> {
+    Ok(organizations
+        .update_department(department_id, req.into())
+        .await?
+        .into())
+}
+
+/// `DELETE /departments/{id}` — its members stay in the organization with
+/// no department.
+pub async fn delete_department(
+    organizations: &dyn OrganizationService,
+    department_id: Uuid,
+) -> Result<(), ApiError> {
+    Ok(organizations.delete_department(department_id).await?)
+}
+
+/// `GET /organizations/{id}/members?department_id=&limit=&offset=` —
+/// oldest first.
+pub async fn organization_members(
+    organizations: &dyn OrganizationService,
+    organization_id: Uuid,
+    query: MemberQuery,
+) -> Result<MembershipPageResponse, ApiError> {
+    Ok(organizations.members(organization_id, query).await?.into())
 }
 
 /// `POST /refresh` — the only endpoint that touches session storage.

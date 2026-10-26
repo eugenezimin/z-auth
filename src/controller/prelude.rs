@@ -16,6 +16,13 @@ pub use crate::identity::external::{
     ExternalIdentity, ExternalIdentityEvents, ExternalIdentityRepository, ExternalPrincipal,
     LinkPolicy, NewExternalIdentity, ProviderPolicy, Provisioning,
 };
+pub use crate::identity::organization::{
+    Department, DepartmentInput, MemberQuery, Membership, MembershipInput, Organization,
+    OrganizationInput, OrganizationQuery, OrganizationRepository, OrganizationService,
+};
+pub use crate::identity::profile::{
+    Address, AddressInput, Phone, PhoneInput, ProfileRepository, ProfileService,
+};
 pub use crate::identity::user::{
     NewUser, RegisterUser, UpdateUser, User, UserPage, UserQuery, UserRepository, UserService,
     UserUpdate, UserWithRoles,

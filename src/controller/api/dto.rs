@@ -158,6 +158,158 @@ pub struct ExternalIdentityResponse {
     pub last_login_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+// ── Profile ───────────────────────────────────────────────────────────────────
+
+/// Body of `POST /me/phones` and `PUT /me/phones/{id}`.  `is_primary`
+/// makes it the primary phone; `false` never demotes it.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PhoneRequest {
+    pub label: String,
+    /// International format, e.g. `+1 555 123 4567`.
+    pub number: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub is_primary: bool,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PhoneResponse {
+    pub id: uuid::Uuid,
+    pub label: String,
+    /// E.164, e.g. `+15551234567`.
+    pub number: String,
+    pub is_primary: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Body of `POST /me/addresses` and `PUT /me/addresses/{id}`.
+/// `is_primary` makes it the primary address; `false` never demotes it.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AddressRequest {
+    pub label: String,
+    pub line1: String,
+    pub line2: Option<String>,
+    pub locality: Option<String>,
+    pub region: Option<String>,
+    pub postal_code: Option<String>,
+    /// ISO 3166-1 alpha-2 (`US`, `DE`).
+    pub country_code: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub is_primary: bool,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AddressResponse {
+    pub id: uuid::Uuid,
+    pub label: String,
+    pub line1: String,
+    pub line2: Option<String>,
+    pub locality: Option<String>,
+    pub region: Option<String>,
+    pub postal_code: Option<String>,
+    pub country_code: String,
+    pub is_primary: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+// ── Organizations ─────────────────────────────────────────────────────────────
+
+/// Body of `POST /organizations` and `PUT /organizations/{id}`.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OrganizationRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OrganizationResponse {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Response of `GET /organizations`.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OrganizationPageResponse {
+    pub items: Vec<OrganizationResponse>,
+    /// Every organization matching the search, not just this page.
+    pub total: u64,
+}
+
+/// Body of `POST /organizations/{id}/departments` and
+/// `PUT /departments/{id}`.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DepartmentRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DepartmentResponse {
+    pub id: uuid::Uuid,
+    pub organization_id: uuid::Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Body of `POST /me/organizations` and `PUT /me/organizations/{id}`.
+/// `department_id` must be a department of `organization_id`.
+/// `is_primary` makes it the primary membership; `false` never demotes it.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MembershipRequest {
+    pub organization_id: uuid::Uuid,
+    pub department_id: Option<uuid::Uuid>,
+    /// Job title.
+    pub title: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub is_primary: bool,
+}
+
+/// A catalog entry referenced by a membership.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CatalogRefDto {
+    pub id: uuid::Uuid,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MembershipResponse {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub organization: CatalogRefDto,
+    pub department: Option<CatalogRefDto>,
+    pub title: Option<String>,
+    pub is_primary: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Response of `GET /organizations/{id}/members`.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MembershipPageResponse {
+    pub items: Vec<MembershipResponse>,
+    /// Every membership matching the query, not just this page.
+    pub total: u64,
+}
+
 // ── Token revocation ──────────────────────────────────────────────────────────
 
 /// Something to revoke.  Revoking a token ends its whole session.

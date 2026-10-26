@@ -79,6 +79,8 @@ struct State {
     // ── z-auth-mfa ──────────────────────────────────────────────────────
     #[cfg(feature = "mfa")]
     mfa: mfa_store::MfaState,
+    // ── profiles & organizations ────────────────────────────────────────
+    profile: profile_store::ProfileState,
 }
 
 const FEED_SESSION: &str = "session";
@@ -341,6 +343,7 @@ impl UserRepository for InMemoryDb {
         s.user_roles.retain(|ur| ur.user_id != user_id);
         s.user_grants.retain(|g| g.owner != user_id);
         s.external_identities.retain(|_, i| i.user_id != user_id);
+        s.profile.remove_user(user_id);
         let owned: Vec<Uuid> = s
             .sessions
             .values()
@@ -2244,6 +2247,711 @@ mod mfa_store {
             });
             let after = s.mfa.challenges.len() + s.mfa.factors.len() + s.mfa.locks.len();
             Ok((before - after) as u64)
+        }
+    }
+}
+
+// ── ProfileRepository / OrganizationRepository ────────────────────────────────
+
+mod profile_store {
+    use super::*;
+    use z_auth::identity::organization::{
+        DepartmentRef, MembershipPage, NewMembership, OrganizationPage, OrganizationRef,
+    };
+    use z_auth::identity::profile::{NewAddress, NewPhone};
+
+    /// A stored membership; names are joined from the catalog on read.
+    #[derive(Clone)]
+    struct MembershipRow {
+        id: Uuid,
+        user_id: Uuid,
+        organization_id: Uuid,
+        department_id: Option<Uuid>,
+        title: Option<String>,
+        is_primary: bool,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+        seq: u64,
+    }
+
+    #[derive(Default)]
+    pub(super) struct ProfileState {
+        /// id → (phone, insertion order)
+        phones: HashMap<Uuid, (Phone, u64)>,
+        addresses: HashMap<Uuid, (Address, u64)>,
+        organizations: HashMap<Uuid, Organization>,
+        departments: HashMap<Uuid, Department>,
+        memberships: HashMap<Uuid, MembershipRow>,
+        /// Insertion counter: orders rows created at the same mock instant.
+        seq: u64,
+    }
+
+    impl ProfileState {
+        /// Like `ON DELETE CASCADE` from the user.
+        pub(super) fn remove_user(&mut self, user_id: Uuid) {
+            self.phones.retain(|_, (p, _)| p.user_id != user_id);
+            self.addresses.retain(|_, (a, _)| a.user_id != user_id);
+            self.memberships.retain(|_, m| m.user_id != user_id);
+        }
+
+        fn next_seq(&mut self) -> u64 {
+            self.seq += 1;
+            self.seq
+        }
+
+        fn membership(&self, row: &MembershipRow) -> Membership {
+            let organization = &self.organizations[&row.organization_id];
+            Membership {
+                id: row.id,
+                user_id: row.user_id,
+                organization: OrganizationRef {
+                    id: organization.id,
+                    name: organization.name.clone(),
+                },
+                department: row
+                    .department_id
+                    .and_then(|id| self.departments.get(&id))
+                    .map(|d| DepartmentRef {
+                        id: d.id,
+                        name: d.name.clone(),
+                    }),
+                title: row.title.clone(),
+                is_primary: row.is_primary,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            }
+        }
+
+        /// The membership's organization exists and its department is one
+        /// of the organization's (the composite foreign key).
+        fn check_placement(&self, m: &NewMembership) -> Result<(), AuthError> {
+            if !self.organizations.contains_key(&m.organization_id) {
+                return Err(AuthError::OrganizationNotFound);
+            }
+            match m.department_id.map(|id| self.departments.get(&id)) {
+                Some(Some(d)) if d.organization_id != m.organization_id => {
+                    Err(AuthError::DepartmentNotFound)
+                }
+                Some(None) => Err(AuthError::DepartmentNotFound),
+                _ => Ok(()),
+            }
+        }
+
+        /// The `(user, organization, department)` uniqueness, ignoring row
+        /// `except`.
+        fn check_member_unique(
+            &self,
+            user_id: Uuid,
+            m: &NewMembership,
+            except: Option<Uuid>,
+        ) -> Result<(), AuthError> {
+            let taken = self.memberships.values().any(|r| {
+                Some(r.id) != except
+                    && r.user_id == user_id
+                    && r.organization_id == m.organization_id
+                    && r.department_id == m.department_id
+            });
+            if taken {
+                Err(AuthError::MembershipAlreadyExists)
+            } else {
+                Ok(())
+            }
+        }
+
+        fn organization_name_taken(&self, name: &str, except: Option<Uuid>) -> bool {
+            let name = name.to_lowercase();
+            self.organizations
+                .values()
+                .any(|o| Some(o.id) != except && o.name.to_lowercase() == name)
+        }
+
+        fn department_name_taken(
+            &self,
+            organization_id: Uuid,
+            name: &str,
+            except: Option<Uuid>,
+        ) -> bool {
+            let name = name.to_lowercase();
+            self.departments.values().any(|d| {
+                Some(d.id) != except
+                    && d.organization_id == organization_id
+                    && d.name.to_lowercase() == name
+            })
+        }
+    }
+
+    fn require_user(s: &State, user_id: Uuid) -> Result<(), AuthError> {
+        if s.users.contains_key(&user_id) {
+            Ok(())
+        } else {
+            Err(AuthError::UserNotFound)
+        }
+    }
+
+    #[async_trait]
+    impl ProfileRepository for InMemoryDb {
+        async fn list_phones(&self, user_id: Uuid) -> Result<Vec<Phone>, AuthError> {
+            let s = self.lock();
+            let mut found: Vec<_> = s
+                .profile
+                .phones
+                .values()
+                .filter(|(p, _)| p.user_id == user_id)
+                .collect();
+            found.sort_by_key(|(p, seq)| (!p.is_primary, p.created_at, *seq));
+            Ok(found.into_iter().map(|(p, _)| p.clone()).collect())
+        }
+
+        async fn add_phone(&self, user_id: Uuid, phone: NewPhone) -> Result<Phone, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            require_user(&s, user_id)?;
+            let p = &mut s.profile;
+            if p.phones
+                .values()
+                .any(|(x, _)| x.user_id == user_id && x.number == phone.number)
+            {
+                return Err(AuthError::PhoneAlreadyAdded);
+            }
+            if phone.is_primary {
+                for (x, _) in p.phones.values_mut().filter(|(x, _)| x.user_id == user_id) {
+                    x.is_primary = false;
+                }
+            }
+            let stored = Phone {
+                id: Uuid::new_v4(),
+                user_id,
+                label: phone.label,
+                number: phone.number,
+                is_primary: phone.is_primary,
+                created_at: now,
+                updated_at: now,
+            };
+            let seq = p.next_seq();
+            p.phones.insert(stored.id, (stored.clone(), seq));
+            Ok(stored)
+        }
+
+        async fn replace_phone(
+            &self,
+            user_id: Uuid,
+            phone_id: Uuid,
+            phone: NewPhone,
+        ) -> Result<Option<Phone>, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .phones
+                .get(&phone_id)
+                .is_some_and(|(x, _)| x.user_id == user_id)
+            {
+                return Ok(None);
+            }
+            if p.phones
+                .values()
+                .any(|(x, _)| x.id != phone_id && x.user_id == user_id && x.number == phone.number)
+            {
+                return Err(AuthError::PhoneAlreadyAdded);
+            }
+            if phone.is_primary {
+                for (x, _) in p.phones.values_mut().filter(|(x, _)| x.user_id == user_id) {
+                    x.is_primary = false;
+                }
+            }
+            let (stored, _) = p.phones.get_mut(&phone_id).expect("checked above");
+            stored.label = phone.label;
+            stored.number = phone.number;
+            stored.is_primary |= phone.is_primary;
+            stored.updated_at = now;
+            Ok(Some(stored.clone()))
+        }
+
+        async fn set_primary_phone(
+            &self,
+            user_id: Uuid,
+            phone_id: Uuid,
+        ) -> Result<bool, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .phones
+                .get(&phone_id)
+                .is_some_and(|(x, _)| x.user_id == user_id)
+            {
+                return Ok(false);
+            }
+            for (x, _) in p.phones.values_mut().filter(|(x, _)| x.user_id == user_id) {
+                if x.is_primary != (x.id == phone_id) {
+                    x.is_primary = x.id == phone_id;
+                    x.updated_at = now;
+                }
+            }
+            Ok(true)
+        }
+
+        async fn delete_phone(&self, user_id: Uuid, phone_id: Uuid) -> Result<bool, AuthError> {
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .phones
+                .get(&phone_id)
+                .is_some_and(|(x, _)| x.user_id == user_id)
+            {
+                return Ok(false);
+            }
+            Ok(p.phones.remove(&phone_id).is_some())
+        }
+
+        async fn list_addresses(&self, user_id: Uuid) -> Result<Vec<Address>, AuthError> {
+            let s = self.lock();
+            let mut found: Vec<_> = s
+                .profile
+                .addresses
+                .values()
+                .filter(|(a, _)| a.user_id == user_id)
+                .collect();
+            found.sort_by_key(|(a, seq)| (!a.is_primary, a.created_at, *seq));
+            Ok(found.into_iter().map(|(a, _)| a.clone()).collect())
+        }
+
+        async fn add_address(
+            &self,
+            user_id: Uuid,
+            address: NewAddress,
+        ) -> Result<Address, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            require_user(&s, user_id)?;
+            let p = &mut s.profile;
+            if address.is_primary {
+                for (x, _) in p
+                    .addresses
+                    .values_mut()
+                    .filter(|(x, _)| x.user_id == user_id)
+                {
+                    x.is_primary = false;
+                }
+            }
+            let stored = Address {
+                id: Uuid::new_v4(),
+                user_id,
+                label: address.label,
+                line1: address.line1,
+                line2: address.line2,
+                locality: address.locality,
+                region: address.region,
+                postal_code: address.postal_code,
+                country_code: address.country_code,
+                is_primary: address.is_primary,
+                created_at: now,
+                updated_at: now,
+            };
+            let seq = p.next_seq();
+            p.addresses.insert(stored.id, (stored.clone(), seq));
+            Ok(stored)
+        }
+
+        async fn replace_address(
+            &self,
+            user_id: Uuid,
+            address_id: Uuid,
+            address: NewAddress,
+        ) -> Result<Option<Address>, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .addresses
+                .get(&address_id)
+                .is_some_and(|(x, _)| x.user_id == user_id)
+            {
+                return Ok(None);
+            }
+            if address.is_primary {
+                for (x, _) in p
+                    .addresses
+                    .values_mut()
+                    .filter(|(x, _)| x.user_id == user_id)
+                {
+                    x.is_primary = false;
+                }
+            }
+            let (stored, _) = p.addresses.get_mut(&address_id).expect("checked above");
+            stored.label = address.label;
+            stored.line1 = address.line1;
+            stored.line2 = address.line2;
+            stored.locality = address.locality;
+            stored.region = address.region;
+            stored.postal_code = address.postal_code;
+            stored.country_code = address.country_code;
+            stored.is_primary |= address.is_primary;
+            stored.updated_at = now;
+            Ok(Some(stored.clone()))
+        }
+
+        async fn set_primary_address(
+            &self,
+            user_id: Uuid,
+            address_id: Uuid,
+        ) -> Result<bool, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .addresses
+                .get(&address_id)
+                .is_some_and(|(x, _)| x.user_id == user_id)
+            {
+                return Ok(false);
+            }
+            for (x, _) in p
+                .addresses
+                .values_mut()
+                .filter(|(x, _)| x.user_id == user_id)
+            {
+                if x.is_primary != (x.id == address_id) {
+                    x.is_primary = x.id == address_id;
+                    x.updated_at = now;
+                }
+            }
+            Ok(true)
+        }
+
+        async fn delete_address(&self, user_id: Uuid, address_id: Uuid) -> Result<bool, AuthError> {
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .addresses
+                .get(&address_id)
+                .is_some_and(|(x, _)| x.user_id == user_id)
+            {
+                return Ok(false);
+            }
+            Ok(p.addresses.remove(&address_id).is_some())
+        }
+    }
+
+    #[async_trait]
+    impl OrganizationRepository for InMemoryDb {
+        async fn find_organization(&self, id: Uuid) -> Result<Option<Organization>, AuthError> {
+            Ok(self.lock().profile.organizations.get(&id).cloned())
+        }
+
+        async fn list_organizations(
+            &self,
+            query: &OrganizationQuery,
+        ) -> Result<OrganizationPage, AuthError> {
+            let s = self.lock();
+            let search = query.search.as_deref().map(str::to_lowercase);
+            let mut found: Vec<_> = s
+                .profile
+                .organizations
+                .values()
+                .filter(|o| {
+                    search
+                        .as_deref()
+                        .is_none_or(|q| o.name.to_lowercase().contains(q))
+                })
+                .cloned()
+                .collect();
+            found.sort_by_key(|o| (o.name.to_lowercase(), o.id));
+            let total = found.len() as u64;
+            let items = found
+                .into_iter()
+                .skip(query.offset as usize)
+                .take(query.limit as usize)
+                .collect();
+            Ok(OrganizationPage { items, total })
+        }
+
+        async fn create_organization(
+            &self,
+            input: OrganizationInput,
+        ) -> Result<Organization, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            if s.profile.organization_name_taken(&input.name, None) {
+                return Err(AuthError::OrganizationAlreadyExists);
+            }
+            let organization = Organization {
+                id: Uuid::new_v4(),
+                name: input.name,
+                description: input.description,
+                created_at: now,
+                updated_at: now,
+            };
+            s.profile
+                .organizations
+                .insert(organization.id, organization.clone());
+            Ok(organization)
+        }
+
+        async fn update_organization(
+            &self,
+            id: Uuid,
+            input: OrganizationInput,
+        ) -> Result<Option<Organization>, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            if !s.profile.organizations.contains_key(&id) {
+                return Ok(None);
+            }
+            if s.profile.organization_name_taken(&input.name, Some(id)) {
+                return Err(AuthError::OrganizationAlreadyExists);
+            }
+            let organization = s.profile.organizations.get_mut(&id).expect("checked above");
+            organization.name = input.name;
+            organization.description = input.description;
+            organization.updated_at = now;
+            Ok(Some(organization.clone()))
+        }
+
+        async fn delete_organization(&self, id: Uuid) -> Result<bool, AuthError> {
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if p.organizations.remove(&id).is_none() {
+                return Ok(false);
+            }
+            p.departments.retain(|_, d| d.organization_id != id);
+            p.memberships.retain(|_, m| m.organization_id != id);
+            Ok(true)
+        }
+
+        async fn list_departments(
+            &self,
+            organization_id: Uuid,
+        ) -> Result<Vec<Department>, AuthError> {
+            let s = self.lock();
+            let mut found: Vec<_> = s
+                .profile
+                .departments
+                .values()
+                .filter(|d| d.organization_id == organization_id)
+                .cloned()
+                .collect();
+            found.sort_by_key(|d| (d.name.to_lowercase(), d.id));
+            Ok(found)
+        }
+
+        async fn find_department(&self, id: Uuid) -> Result<Option<Department>, AuthError> {
+            Ok(self.lock().profile.departments.get(&id).cloned())
+        }
+
+        async fn create_department(
+            &self,
+            organization_id: Uuid,
+            input: DepartmentInput,
+        ) -> Result<Department, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            if !s.profile.organizations.contains_key(&organization_id) {
+                return Err(AuthError::OrganizationNotFound);
+            }
+            if s.profile
+                .department_name_taken(organization_id, &input.name, None)
+            {
+                return Err(AuthError::DepartmentAlreadyExists);
+            }
+            let department = Department {
+                id: Uuid::new_v4(),
+                organization_id,
+                name: input.name,
+                description: input.description,
+                created_at: now,
+                updated_at: now,
+            };
+            s.profile
+                .departments
+                .insert(department.id, department.clone());
+            Ok(department)
+        }
+
+        async fn update_department(
+            &self,
+            id: Uuid,
+            input: DepartmentInput,
+        ) -> Result<Option<Department>, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let Some(organization_id) = s.profile.departments.get(&id).map(|d| d.organization_id)
+            else {
+                return Ok(None);
+            };
+            if s.profile
+                .department_name_taken(organization_id, &input.name, Some(id))
+            {
+                return Err(AuthError::DepartmentAlreadyExists);
+            }
+            let department = s.profile.departments.get_mut(&id).expect("checked above");
+            department.name = input.name;
+            department.description = input.description;
+            department.updated_at = now;
+            Ok(Some(department.clone()))
+        }
+
+        async fn delete_department(&self, id: Uuid) -> Result<bool, AuthError> {
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if p.departments.remove(&id).is_none() {
+                return Ok(false);
+            }
+            // ON DELETE SET NULL (department_id)
+            for m in p.memberships.values_mut() {
+                if m.department_id == Some(id) {
+                    m.department_id = None;
+                }
+            }
+            Ok(true)
+        }
+
+        async fn list_memberships(&self, user_id: Uuid) -> Result<Vec<Membership>, AuthError> {
+            let s = self.lock();
+            let p = &s.profile;
+            let mut found: Vec<_> = p
+                .memberships
+                .values()
+                .filter(|m| m.user_id == user_id)
+                .collect();
+            found.sort_by_key(|m| (!m.is_primary, m.created_at, m.seq));
+            Ok(found.into_iter().map(|m| p.membership(m)).collect())
+        }
+
+        async fn list_members(
+            &self,
+            organization_id: Uuid,
+            query: &MemberQuery,
+        ) -> Result<MembershipPage, AuthError> {
+            let s = self.lock();
+            let p = &s.profile;
+            let mut found: Vec<_> = p
+                .memberships
+                .values()
+                .filter(|m| {
+                    m.organization_id == organization_id
+                        && query
+                            .department_id
+                            .is_none_or(|d| m.department_id == Some(d))
+                })
+                .collect();
+            found.sort_by_key(|m| (m.created_at, m.seq));
+            let total = found.len() as u64;
+            let items = found
+                .into_iter()
+                .skip(query.offset as usize)
+                .take(query.limit as usize)
+                .map(|m| p.membership(m))
+                .collect();
+            Ok(MembershipPage { items, total })
+        }
+
+        async fn add_membership(
+            &self,
+            user_id: Uuid,
+            membership: NewMembership,
+        ) -> Result<Membership, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            require_user(&s, user_id)?;
+            let p = &mut s.profile;
+            p.check_placement(&membership)?;
+            p.check_member_unique(user_id, &membership, None)?;
+            if membership.is_primary {
+                for m in p.memberships.values_mut().filter(|m| m.user_id == user_id) {
+                    m.is_primary = false;
+                }
+            }
+            let row = MembershipRow {
+                id: Uuid::new_v4(),
+                user_id,
+                organization_id: membership.organization_id,
+                department_id: membership.department_id,
+                title: membership.title,
+                is_primary: membership.is_primary,
+                created_at: now,
+                updated_at: now,
+                seq: p.next_seq(),
+            };
+            p.memberships.insert(row.id, row.clone());
+            Ok(p.membership(&row))
+        }
+
+        async fn update_membership(
+            &self,
+            user_id: Uuid,
+            membership_id: Uuid,
+            membership: NewMembership,
+        ) -> Result<Option<Membership>, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .memberships
+                .get(&membership_id)
+                .is_some_and(|m| m.user_id == user_id)
+            {
+                return Ok(None);
+            }
+            p.check_placement(&membership)?;
+            p.check_member_unique(user_id, &membership, Some(membership_id))?;
+            if membership.is_primary {
+                for m in p.memberships.values_mut().filter(|m| m.user_id == user_id) {
+                    m.is_primary = false;
+                }
+            }
+            let row = p
+                .memberships
+                .get_mut(&membership_id)
+                .expect("checked above");
+            row.organization_id = membership.organization_id;
+            row.department_id = membership.department_id;
+            row.title = membership.title;
+            row.is_primary |= membership.is_primary;
+            row.updated_at = now;
+            let row = row.clone();
+            Ok(Some(p.membership(&row)))
+        }
+
+        async fn set_primary_membership(
+            &self,
+            user_id: Uuid,
+            membership_id: Uuid,
+        ) -> Result<bool, AuthError> {
+            let now = self.now();
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .memberships
+                .get(&membership_id)
+                .is_some_and(|m| m.user_id == user_id)
+            {
+                return Ok(false);
+            }
+            for m in p.memberships.values_mut().filter(|m| m.user_id == user_id) {
+                if m.is_primary != (m.id == membership_id) {
+                    m.is_primary = m.id == membership_id;
+                    m.updated_at = now;
+                }
+            }
+            Ok(true)
+        }
+
+        async fn delete_membership(
+            &self,
+            user_id: Uuid,
+            membership_id: Uuid,
+        ) -> Result<bool, AuthError> {
+            let mut s = self.lock();
+            let p = &mut s.profile;
+            if !p
+                .memberships
+                .get(&membership_id)
+                .is_some_and(|m| m.user_id == user_id)
+            {
+                return Ok(false);
+            }
+            Ok(p.memberships.remove(&membership_id).is_some())
         }
     }
 }
