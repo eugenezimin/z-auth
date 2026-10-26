@@ -283,6 +283,43 @@ This port keeps the short-lived state of multi-step sign-ins as opaque strings u
 
 `take` is what makes every flow single use, so it must be one atomic operation, such as a `DELETE ... RETURNING` in SQL, rather than a read followed by a delete. `ZAuth::tick` calls `purge_expired` and reports the count as `TickReport::flows_purged`.
 
+## ProfileRepository
+
+This port stores the phone numbers and postal addresses users may add to their account. It is optional and only used when the host calls `ZAuthBuilder::profiles`. Every input arrives validated and normalized by the core, so a phone number is already in E.164 form, labels and text fields are trimmed, blank optional fields are `None`, and the country code is two uppercase letters. Every call on a single item takes the user's id together with the item's id, and an item that belongs to another user must behave exactly like one that does not exist.
+
+| Method | Contract |
+|---|---|
+| `list_phones(user_id)` / `list_addresses(user_id)` | The user's items, the primary one first, then oldest first by `created_at` |
+| `add_phone(user_id, NewPhone)` / `add_address(user_id, NewAddress)` | Insert and return the item with a store-assigned `id` and `created_at = updated_at = now`. An unknown user fails with `UserNotFound`, and a number the user already has fails with `PhoneAlreadyAdded` |
+| `replace_phone(user_id, id, NewPhone)` / `replace_address(user_id, id, NewAddress)` | Replace every field and set `updated_at = now`. `Ok(None)` if the user has no such item. A number the user has on another phone fails with `PhoneAlreadyAdded` |
+| `set_primary_phone(user_id, id)` / `set_primary_address(user_id, id)` | Make the item primary. `Ok(false)`, changing nothing, if the user has no such item |
+| `delete_phone(user_id, id)` / `delete_address(user_id, id)` | Delete the item. `Ok(false)` if the user has no such item |
+
+Each user has at most one primary phone and one primary address. Writing an item with `is_primary = true`, whether by adding, replacing or `set_primary_*`, must clear the user's previous primary item of that kind in the same atomic step, while `is_primary = false` on a replace leaves the item's flag as it was. Two concurrent primary changes for one user must not leave two primaries and should not fail either, which the PostgreSQL adapter achieves by locking the user's row at the start of each such transaction, with a partial unique index as the backstop. The core makes a user's first item of a kind primary and enforces the per-user limits (`MAX_PHONES_PER_USER` and `MAX_ADDRESSES_PER_USER`), so the store does neither. Deleting a user must delete their phones and addresses too.
+
+## OrganizationRepository
+
+This port stores the shared catalog of organizations and their departments, and the memberships that tie users to them. It is optional and only used when the host calls `ZAuthBuilder::organizations`. Inputs arrive validated and trimmed.
+
+| Method | Contract |
+|---|---|
+| `find_organization(id)` / `find_department(id)` | The entry, or `Ok(None)` |
+| `list_organizations(&OrganizationQuery)` | One page ordered by name case-insensitively, then by id, and the `total` matching `search`, which when set is a case-insensitive substring of the name |
+| `create_organization(OrganizationInput)` | Insert and return. A name that differs from an existing one only in case fails with `OrganizationAlreadyExists` |
+| `update_organization(id, OrganizationInput)` | Replace the name and description and set `updated_at = now`. `Ok(None)` if it does not exist |
+| `delete_organization(id)` | Delete it together with its departments and memberships. `Ok(false)` if it does not exist |
+| `list_departments(organization_id)` | The organization's departments ordered by name case-insensitively |
+| `create_department(organization_id, DepartmentInput)` | Insert and return. An unknown organization fails with `OrganizationNotFound`, and a name the organization already has, in any case, with `DepartmentAlreadyExists` |
+| `update_department(id, DepartmentInput)` | As `update_organization`, with the same name rule within the organization |
+| `delete_department(id)` | Delete it, keeping its memberships in the organization with no department. `Ok(false)` if it does not exist |
+| `list_memberships(user_id)` | The user's memberships, the primary first, then oldest first, each with its organization's and department's current names |
+| `list_members(organization_id, &MemberQuery)` | One page of the organization's memberships, oldest first, optionally only one department's, and the `total` matching |
+| `add_membership(user_id, NewMembership)` | Insert and return. An unknown user fails with `UserNotFound`, an unknown organization with `OrganizationNotFound`, a department that is not the organization's with `DepartmentNotFound`, and a second membership with the same organization and department, no department included, with `MembershipAlreadyExists` |
+| `update_membership(user_id, id, NewMembership)` | Replace the organization, department and title under the same rules. `Ok(None)` if the user has no such membership |
+| `set_primary_membership(user_id, id)` / `delete_membership(user_id, id)` | As for phones. `Ok(false)` if the user has no such membership |
+
+Memberships follow the same primary rules as phones and addresses, with at most one primary per user, and the core makes the first one primary and enforces `MAX_MEMBERSHIPS_PER_USER`. The core also checks that a membership's department belongs to its organization before it writes, but the store must enforce it too, which a composite foreign key from `(organization_id, department_id)` to the department's `(organization_id, id)` does in SQL. Deleting a user must delete their memberships.
+
 ## Testing an adapter
 
-The core's own test suite runs against `InMemoryDb`, and the PostgreSQL adapter has integration tests for its repositories under `adapters/postgres/tests`. A new adapter can reuse the core scenarios by wiring its repositories into the same helpers. `z_auth_testkit::server_with` shows the wiring, and the [development guide](development.md) lists what the testkit provides. Scenarios worth covering explicitly are concurrent `rotate` calls on the same generation (exactly one `Rotated`), history trimming, `mark_enforced` racing between two callers (exactly one winner), case-insensitive username uniqueness, permission positions surviving deletions, and, for the optional ports, a duplicate `(issuer, subject)` failing with `ExternalIdentityLinkedElsewhere` and a flow state that is returned by one `take` only and by none once expired.
+The core's own test suite runs against `InMemoryDb`, and the PostgreSQL adapter has integration tests for its repositories under `adapters/postgres/tests`. A new adapter can reuse the core scenarios by wiring its repositories into the same helpers. `z_auth_testkit::server_with` shows the wiring, and the [development guide](development.md) lists what the testkit provides. Scenarios worth covering explicitly are concurrent `rotate` calls on the same generation (exactly one `Rotated`), history trimming, `mark_enforced` racing between two callers (exactly one winner), case-insensitive username uniqueness, permission positions surviving deletions, and, for the optional ports, a duplicate `(issuer, subject)` failing with `ExternalIdentityLinkedElsewhere`, a flow state that is returned by one `take` only and by none once expired, concurrent primary changes for one user leaving exactly one primary item, and a department of another organization refused for a membership.

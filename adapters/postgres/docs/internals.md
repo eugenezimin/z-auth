@@ -4,7 +4,7 @@ This page explains how `z-auth-postgres` turns port calls into SQL where the det
 
 ## Error mapping
 
-Every repository funnels `sqlx::Error` through one function, `map_sqlx_error` in `src/errors.rs`. It recognises exactly one SQLSTATE, `23505` (unique violation), and translates it by constraint name into a specific domain error. Every other database error, every unique violation on a constraint not in the list, and every connection or decoding error becomes `AuthError::Storage` with the sqlx message. The constraint names are constants in `src/constants.rs`.
+Every repository funnels `sqlx::Error` through one function, `map_sqlx_error` in `src/errors.rs`. It recognises two SQLSTATEs, `23505` (unique violation) and `23503` (foreign-key violation), and translates them by constraint name into a specific domain error. Every other database error, every violation of a constraint not in the list, and every connection or decoding error becomes `AuthError::Storage` with the sqlx message. The constraint names are constants in `src/constants.rs`.
 
 | Constraint | Constant | Domain error |
 |---|---|---|
@@ -16,11 +16,18 @@ Every repository funnels `sqlx::Error` through one function, `map_sqlx_error` in
 | `unique_user_role_active` | `CONSTRAINT_USER_ROLE_ACTIVE` | `AuthError::RoleAlreadyAssigned` |
 | `uq_mfa_factors_user_method_active` | `CONSTRAINT_MFA_FACTORS_ACTIVE` | `AuthError::SecondFactorAlreadyEnrolled` |
 | `uq_identity_external_identities_subject` | `CONSTRAINT_EXTERNAL_IDENTITIES_SUBJECT` | `AuthError::ExternalIdentityLinkedElsewhere` |
+| `uq_identity_user_phones_number` | `CONSTRAINT_USER_PHONES_NUMBER` | `AuthError::PhoneAlreadyAdded` |
+| `identity_organizations_name_key` | `CONSTRAINT_ORGANIZATIONS_NAME` | `AuthError::OrganizationAlreadyExists` |
+| `identity_organization_departments_name_key` | `CONSTRAINT_DEPARTMENTS_NAME` | `AuthError::DepartmentAlreadyExists` |
+| `uq_identity_organization_memberships_member` | `CONSTRAINT_MEMBERSHIPS_MEMBER` | `AuthError::MembershipAlreadyExists` |
+| `fk_identity_user_phones_user_id`, `fk_identity_user_addresses_user_id`, `fk_identity_organization_memberships_user_id` (`23503`) | `CONSTRAINT_USER_PHONES_USER`, `CONSTRAINT_USER_ADDRESSES_USER`, `CONSTRAINT_MEMBERSHIPS_USER` | `AuthError::UserNotFound` |
+| `fk_identity_organization_departments_organization_id`, `fk_identity_organization_memberships_organization_id` (`23503`) | `CONSTRAINT_DEPARTMENTS_ORGANIZATION`, `CONSTRAINT_MEMBERSHIPS_ORGANIZATION` | `AuthError::OrganizationNotFound` |
+| `fk_identity_organization_memberships_department` (`23503`) | `CONSTRAINT_MEMBERSHIPS_DEPARTMENT` | `AuthError::DepartmentNotFound` |
 | any other constraint, any other SQLSTATE | none | `AuthError::Storage` |
 
 Two of these deserve a note. `unique_user_role_active` rarely fires in practice, because `PgUserRoleRepository::assign` inserts with `ON CONFLICT DO NOTHING` and reports an existing active assignment by returning `false`. And `uq_mfa_factors_user_method_active` fires from `ACTIVATE_FACTOR`, when a pending factor is confirmed while the user already has an active factor of the same method.
 
-One more SQLSTATE is handled outside the mapper. `PgSyncStore::store_session` checks for `23503` (foreign-key violation) when it inserts a merged session. On the authority that means the session's user has been deleted, and since the user's sessions would have been deleted with it, the merge returns `ApplyOutcome::Dropped` instead of an error. Session stores have no foreign key on `user_id`, so there the case cannot arise.
+`23503` is also handled outside the mapper. `PgSyncStore::store_session` checks for it when it inserts a merged session. On the authority that means the session's user has been deleted, and since the user's sessions would have been deleted with it, the merge returns `ApplyOutcome::Dropped` instead of an error. Session stores have no foreign key on `user_id`, so there the case cannot arise.
 
 Errors can also come from converting rows into domain types. A negative generation, a fingerprint hash that is not 32 bytes and a node port outside the `u16` range are reported as `AuthError::Storage`; the mfa repository reports a TOTP step that does not fit an `i64` as `AuthError::Internal`.
 

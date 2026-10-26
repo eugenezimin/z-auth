@@ -14,6 +14,31 @@ Each handler is a plain function, async except for the catalog, that takes a ser
 | `POST /login/link` | `confirm_link` | `auth.authentication()` | `ConfirmLinkRequest`, `ClientContext` | `LoginResponse` |
 | `GET /me/identities` | `external_identities` | `auth.authentication()`, `auth.account_links()` | bearer access token (`&str`) | `Vec<ExternalIdentityResponse>` |
 | `DELETE /me/identities/{id}` | `unlink_external_identity` | `auth.authentication()`, `auth.account_links()` | bearer access token (`&str`), identity id (`Uuid`) | `ExternalIdentityResponse`, the identity removed |
+| `GET /me/phones` | `phones` | `auth.authentication()`, `auth.profiles()` | bearer access token (`&str`) | `Vec<PhoneResponse>` |
+| `POST /me/phones` | `add_phone` | `auth.authentication()`, `auth.profiles()` | bearer, `PhoneRequest` | `PhoneResponse` |
+| `PUT /me/phones/{id}` | `replace_phone` | `auth.authentication()`, `auth.profiles()` | bearer, phone id (`Uuid`), `PhoneRequest` | `PhoneResponse` |
+| `POST /me/phones/{id}/primary` | `set_primary_phone` | `auth.authentication()`, `auth.profiles()` | bearer, phone id (`Uuid`) | `()` |
+| `DELETE /me/phones/{id}` | `delete_phone` | `auth.authentication()`, `auth.profiles()` | bearer, phone id (`Uuid`) | `()` |
+| `GET /me/addresses` | `addresses` | `auth.authentication()`, `auth.profiles()` | bearer access token (`&str`) | `Vec<AddressResponse>` |
+| `POST /me/addresses` | `add_address` | `auth.authentication()`, `auth.profiles()` | bearer, `AddressRequest` | `AddressResponse` |
+| `PUT /me/addresses/{id}` | `replace_address` | `auth.authentication()`, `auth.profiles()` | bearer, address id (`Uuid`), `AddressRequest` | `AddressResponse` |
+| `POST /me/addresses/{id}/primary` | `set_primary_address` | `auth.authentication()`, `auth.profiles()` | bearer, address id (`Uuid`) | `()` |
+| `DELETE /me/addresses/{id}` | `delete_address` | `auth.authentication()`, `auth.profiles()` | bearer, address id (`Uuid`) | `()` |
+| `GET /me/organizations` | `memberships` | `auth.authentication()`, `auth.organizations()` | bearer access token (`&str`) | `Vec<MembershipResponse>` |
+| `POST /me/organizations` | `add_membership` | `auth.authentication()`, `auth.organizations()` | bearer, `MembershipRequest` | `MembershipResponse` |
+| `PUT /me/organizations/{id}` | `update_membership` | `auth.authentication()`, `auth.organizations()` | bearer, membership id (`Uuid`), `MembershipRequest` | `MembershipResponse` |
+| `POST /me/organizations/{id}/primary` | `set_primary_membership` | `auth.authentication()`, `auth.organizations()` | bearer, membership id (`Uuid`) | `()` |
+| `DELETE /me/organizations/{id}` | `delete_membership` | `auth.authentication()`, `auth.organizations()` | bearer, membership id (`Uuid`) | `()` |
+| `GET /organizations` | `organizations` | `auth.organizations()` | `OrganizationQuery` (`search`, `limit`, `offset`) | `OrganizationPageResponse` |
+| `POST /organizations` | `create_organization` | `auth.organizations()` | `OrganizationRequest` | `OrganizationResponse` |
+| `GET /organizations/{id}` | `organization` | `auth.organizations()` | organization id (`Uuid`) | `OrganizationResponse` |
+| `PUT /organizations/{id}` | `update_organization` | `auth.organizations()` | organization id (`Uuid`), `OrganizationRequest` | `OrganizationResponse` |
+| `DELETE /organizations/{id}` | `delete_organization` | `auth.organizations()` | organization id (`Uuid`) | `()` |
+| `GET /organizations/{id}/departments` | `departments` | `auth.organizations()` | organization id (`Uuid`) | `Vec<DepartmentResponse>` |
+| `POST /organizations/{id}/departments` | `create_department` | `auth.organizations()` | organization id (`Uuid`), `DepartmentRequest` | `DepartmentResponse` |
+| `PUT /departments/{id}` | `update_department` | `auth.organizations()` | department id (`Uuid`), `DepartmentRequest` | `DepartmentResponse` |
+| `DELETE /departments/{id}` | `delete_department` | `auth.organizations()` | department id (`Uuid`) | `()` |
+| `GET /organizations/{id}/members` | `organization_members` | `auth.organizations()` | organization id (`Uuid`), `MemberQuery` (`department_id`, `limit`, `offset`) | `MembershipPageResponse` |
 | `POST /refresh` | `refresh` | `auth.authentication()` | `RefreshRequest`, `ClientContext` | `TokenPairResponse` |
 | `POST /logout` | `logout` | `auth.authentication()` | bearer access token (`&str`) | `bool`, whether a session was closed |
 | `POST /logout/all` | `logout_all` | `auth.authentication()` | bearer access token (`&str`) | `u64`, the number of sessions closed |
@@ -23,6 +48,8 @@ Each handler is a plain function, async except for the catalog, that takes a ser
 A few handlers do more than forward. `logout` accepts an expired access token, as long as its signature is valid, and ends its session. `logout_all` first verifies the bearer token fully (signature, expiry and denylist) and then ends every session of the token's own user, so a revoked or expired token gets `401`. `refresh` is the only endpoint that touches session storage on the hot path. `revoke` converts each target and calls `revoke_many`, which skips targets that are not valid tokens and counts the sessions it ended. `permission_catalog` is synchronous and served from memory. It fails with `authz_mode_disabled` outside the permission modes.
 
 The three external-identity handlers need `ZAuthBuilder::external_identities` and fail with `config_error` without it. The sign-in through an identity provider itself has no handler in the core, because it depends on the protocol. z-auth-sso has handlers for the redirect and the callback, whose sign-in answers have the same shapes as the core's `ExternalLoginResponse` (plus a `linked` status for linking from a signed-in session), as its [guide](../adapters/sso/README.md) describes, and the [external identities guide](external-identities.md) covers the flow. `confirm_link` answers a `link_confirmation_required` sign-in with the existing account's password, links the identity and then logs in, so it returns tokens or a second-factor challenge like `login`. The challenge is single use, and a wrong password ends it. `external_identities` and `unlink_external_identity` verify the bearer token fully. Unlinking also needs a session opened at most `AUTH_EXTERNAL_LINK_MAX_AUTH_AGE_SECS` ago and fails with `reauthentication_required` otherwise, and it refuses to remove the user's last way to log in with `last_login_method`.
+
+The profile handlers need `ZAuthBuilder::profiles` and the organization handlers `ZAuthBuilder::organizations`, and both fail with `config_error` without them. Every `/me/...` handler verifies the bearer token fully and acts for the token's own user, so one user can never read or change another user's phones, addresses or memberships, and an id that belongs to someone else is simply not found. The organization catalog handlers take no bearer token at all. Creating, renaming and deleting organizations and departments, and listing an organization's members, are administrative operations that the host must guard itself, for example with `Authorizer::has_role`, in the same way it guards `POST /revocations`. Whether ordinary users may join organizations through `POST /me/organizations` is the host's choice too, since it decides which routes to mount. The [user profiles guide](user-profile.md) describes the rules behind these handlers.
 
 ```mermaid
 flowchart LR
@@ -186,6 +213,56 @@ A sign-in through an external identity provider is answered with an `ExternalLog
 }
 ```
 
+`POST /me/phones` and `PUT /me/phones/{id}` take a `PhoneRequest` and return a `PhoneResponse`. The number may be written with spaces, dashes, dots and parentheses but must carry its country code, and it comes back in E.164 form. `is_primary` may be left out and defaults to `false`, which never demotes a phone that is already primary. The address and membership requests work the same way, and their optional fields may be omitted or sent as `null`.
+
+```json
+{"label": "work", "number": "+1 (555) 123-4567", "is_primary": true}
+```
+
+```json
+{
+  "id": "1f6b2c0e-8d4a-4c3b-9e2f-7a6b5c4d3e2f",
+  "label": "work",
+  "number": "+15551234567",
+  "is_primary": true,
+  "created_at": "2026-10-25T09:31:02.114Z",
+  "updated_at": "2026-10-25T09:31:02.114Z"
+}
+```
+
+```json
+{
+  "label": "home",
+  "line1": "1 Main St",
+  "line2": "Apt 4",
+  "locality": "Springfield",
+  "region": "IL",
+  "postal_code": "62701",
+  "country_code": "US"
+}
+```
+
+A `MembershipResponse` carries the organization and, when there is one, the department as small `{id, name}` objects with their current names, so a client can show a user's memberships without fetching the catalog.
+
+```json
+{"organization_id": "3c2b1a09-8f7e-4d6c-b5a4-938271605f4e", "department_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "title": "Engineer"}
+```
+
+```json
+{
+  "id": "6e5d4c3b-2a19-4f08-b7e6-d5c4b3a29180",
+  "user_id": "0b8c6a52-3f0e-4d7a-9a51-2c3e4f5a6b7c",
+  "organization": {"id": "3c2b1a09-8f7e-4d6c-b5a4-938271605f4e", "name": "Acme"},
+  "department": {"id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "name": "Engineering"},
+  "title": "Engineer",
+  "is_primary": true,
+  "created_at": "2026-10-25T09:40:11.002Z",
+  "updated_at": "2026-10-25T09:40:11.002Z"
+}
+```
+
+`GET /organizations` and `GET /organizations/{id}/members` return a page, `{"items": [...], "total": 42}`, in which `total` counts every match rather than the page alone.
+
 `POST /refresh` takes both tokens, the possibly expired access token and its refresh token, and returns a `TokenPairResponse`.
 
 ```json
@@ -278,6 +355,18 @@ Errors are reported with an `ErrorBody`, built from an `ApiError` with `body()`.
 | `ExternalIdentityNotFound` | 404 | `external_identity_not_found` |
 | `LastLoginMethod` | 409 | `last_login_method` |
 | `ReauthenticationRequired` | 401 | `reauthentication_required` |
+| `InvalidPhoneNumber` | 422 | `invalid_phone_number` |
+| `InvalidProfileData` | 422 | `invalid_profile_data` |
+| `PhoneAlreadyAdded` | 409 | `phone_already_added` |
+| `PhoneNotFound` | 404 | `phone_not_found` |
+| `AddressNotFound` | 404 | `address_not_found` |
+| `ProfileLimitReached` | 409 | `profile_limit_reached` |
+| `OrganizationAlreadyExists` | 409 | `organization_already_exists` |
+| `OrganizationNotFound` | 404 | `organization_not_found` |
+| `DepartmentAlreadyExists` | 409 | `department_already_exists` |
+| `DepartmentNotFound` | 404 | `department_not_found` |
+| `MembershipAlreadyExists` | 409 | `membership_already_exists` |
+| `MembershipNotFound` | 404 | `membership_not_found` |
 | `ClusterMessageRejected` | 401 | `cluster_message_rejected` |
 | `ClusterUnreachable` | 500 | `cluster_unreachable`, generic message |
 | `NotAuthority` | 421 | `not_authority` |

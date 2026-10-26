@@ -17,7 +17,7 @@ The repository is a Cargo workspace. The root crate is the core, and the optiona
 | `z-auth-mfa` | [`adapters/mfa`](adapters/mfa/README.md) | Optional two-factor authentication as an `Extension`, with TOTP, email and SMS codes and recovery codes, configured through `AUTH_MFA_*` |
 | `z-auth-mfa-sender` | [`adapters/mfa/delivery`](adapters/mfa/delivery/README.md) | Ready-made `CodeSender` implementations for z-auth-mfa's email and SMS codes, over SMTP, SendGrid, Postmark, Mailgun, Twilio or a signed webhook, chosen through `AUTH_MFA_EMAIL_PROVIDER` and `AUTH_MFA_SMS_PROVIDER` |
 | `z-auth-sso` | [`adapters/sso`](adapters/sso/README.md) | Optional sign-in through OpenID Connect and OAuth2 identity providers (Google, GitHub and others) and account linking, configured under `sso.providers` or through `AUTH_SSO_*` |
-| `z-auth-postgres` | [`adapters/postgres`](adapters/postgres/README.md) | Reference PostgreSQL adapter on sqlx, with migrations and the `setup_db` binary, including the cluster, mfa and external-identity stores behind features |
+| `z-auth-postgres` | [`adapters/postgres`](adapters/postgres/README.md) | Reference PostgreSQL adapter on sqlx, with migrations and the `setup_db` binary, including the cluster, mfa, external-identity and profile stores behind features |
 | `z-auth-testkit` | `testkit` | In-memory adapters and helpers for the test suites, not published |
 
 The diagram below shows how the pieces relate. The host application talks to the core through `ZAuth`, the extension crates plug into the core through the `Extension` port, and the storage adapters implement the repository ports. z-auth-sso is not an extension. The host calls it from its own routes, and it hands the identities it verified to the core through `ZAuth`.
@@ -79,6 +79,12 @@ With sign-in through external identity providers, also create the tables for lin
 cargo run -p z-auth-postgres --features external-identity --bin setup_db -- --external
 ```
 
+With users' optional phones, addresses and organization memberships, also create the profile tables, which need PostgreSQL 15 or later.
+
+```sh
+cargo run -p z-auth-postgres --features profile --bin setup_db -- --profile
+```
+
 A minimal wiring with the PostgreSQL adapter looks like this. The [getting started guide](docs/getting-started.md) walks through it step by step, including the periodic `tick` and a first register, login, refresh and logout.
 
 ```rust
@@ -101,7 +107,7 @@ let pool = build_pg_pool(&PgConfig::from_source(&source)?).await?;
 let auth = ZAuth::builder(SourceLoader::new(source).load_config()?, repositories(&pool)).build()?;
 ```
 
-`login` returns `LoginOutcome::Tokens` or, when an installed second-factor gate asks for one, `LoginOutcome::SecondFactor` with a challenge that `complete_login` answers. Access tokens carry the session's authentication methods in the `amr` claim, which `Authorizer::require_mfa` checks. With `ZAuthBuilder::external_identities`, `login_external` signs in with an identity that a protocol adapter such as z-auth-sso has verified, and its sessions carry `fed` in `amr`. The [external identities guide](docs/external-identities.md) describes linking and the provider policies.
+`login` returns `LoginOutcome::Tokens` or, when an installed second-factor gate asks for one, `LoginOutcome::SecondFactor` with a challenge that `complete_login` answers. Access tokens carry the session's authentication methods in the `amr` claim, which `Authorizer::require_mfa` checks. With `ZAuthBuilder::external_identities`, `login_external` signs in with an identity that a protocol adapter such as z-auth-sso has verified, and its sessions carry `fed` in `amr`. The [external identities guide](docs/external-identities.md) describes linking and the provider policies. With `ZAuthBuilder::profiles` and `ZAuthBuilder::organizations`, users may also keep optional labelled phone numbers and addresses and belong to organizations and their departments, as the [user profiles guide](docs/user-profile.md) describes.
 
 ## Guides
 
@@ -114,6 +120,7 @@ The core guides live in [`docs/`](docs). They are meant to be read roughly in th
 | [Sessions and tokens](docs/sessions-and-tokens.md) | Sessions and generations, the access JWT, refresh tokens and rotation, reuse detection, revocation, the denylist and signing keys |
 | [Authorization](docs/authorization.md) | Authorization modes, roles, the permission catalog, the token encoding and request-time checks |
 | [External identities](docs/external-identities.md) | Sign-in through external identity providers, provider policies, account linking and the ports behind them |
+| [User profiles](docs/user-profile.md) | Optional phone numbers, addresses and organization memberships, the organization catalog and the rules behind them |
 | [Extensions](docs/extensions.md) | The `Extension` port, its build phases and hooks, and how to write your own |
 | [HTTP API](docs/http-api.md) | The framework-agnostic handlers, DTOs, JSON shapes and the error to status mapping |
 | [Configuration](docs/configuration.md) | Every `AUTH_*` variable, the YAML configuration file, `RawConfig`, the loaders and validation rules |
@@ -124,6 +131,6 @@ Each adapter crate has its own guide set. The [PostgreSQL adapter](adapters/post
 
 ## CI and releases
 
-Every pull request to `main` runs the CI workflow in `.github/workflows/ci.yml`. It checks formatting, runs clippy with warnings denied across all targets and features, runs the test suite for every crate except the PostgreSQL adapter, runs the adapter's own tests against a PostgreSQL 16 service after applying the core, cluster, mfa and external-identity migrations with `setup_db`, checks every feature of every crate on its own with `cargo hack`, builds the documentation with rustdoc warnings denied, and audits the dependency tree with `cargo audit`. A final summary job collects the results into a table and fails if any job failed or was cancelled.
+Every pull request to `main` runs the CI workflow in `.github/workflows/ci.yml`. It checks formatting, runs clippy with warnings denied across all targets and features, runs the test suite for every crate except the PostgreSQL adapter, runs the adapter's own tests against a PostgreSQL 16 service after applying the core, cluster, mfa, external-identity and profile migrations with `setup_db`, checks every feature of every crate on its own with `cargo hack`, builds the documentation with rustdoc warnings denied, and audits the dependency tree with `cargo audit`. A final summary job collects the results into a table and fails if any job failed or was cancelled.
 
 Pushing a tag that starts with `v` runs the release workflow in `.github/workflows/release.yml`. It first checks that the tag matches the version of the `z-auth` crate (for example `v0.3.0`, or `v0.3.0-rc.1` for a pre-release), then builds the workspace in release mode with all features for Linux x86_64 and macOS arm64. Each archive contains the `setup_db`, `keygen` and `mfa_keygen` binaries together with this README, `env.example` and `z-auth.example.yaml`, and is published with a SHA-256 checksum on [GitHub Releases](https://github.com/eugenezimin/z-auth/releases). Tags containing a hyphen are published as pre-releases.

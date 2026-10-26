@@ -103,9 +103,84 @@ stateDiagram-v2
     active --> [*]: removed
 ```
 
+### Profile tables
+
+The profile set exists only when the `profile` feature is used, needs PostgreSQL 15 or later, and lives on the authority alone; none of its tables is in the change feed. It holds the optional data described in the [user profiles guide](../../../docs/user-profile.md). Phones, addresses and memberships belong to an `identity_users` row and are deleted with it. Organizations and their departments form a shared catalog that no user owns. Each user has at most one primary phone, one primary address and one primary membership, which partial unique indexes enforce, and the adapter changes the primary in a transaction that first locks the user's row so that concurrent changes serialize rather than fail.
+
+| Table | Key | Purpose |
+|---|---|---|
+| `identity_user_phones` | `id` | A user's phone numbers in E.164 form with a free-text `label` and `is_primary`; a user keeps each number once |
+| `identity_user_addresses` | `id` | A user's postal addresses with a `label`, `line1`, the optional `line2`, `locality`, `region` and `postal_code`, an ISO 3166-1 alpha-2 `country_code`, and `is_primary` |
+| `identity_organizations` | `id` | The organization catalog, with a `name` unique case-insensitively and an optional `description` |
+| `identity_organization_departments` | `id` | Departments of an organization, deleted with it, with a `name` unique within the organization case-insensitively |
+| `identity_organization_memberships` | `id` | A user's membership in an organization, optionally in one of its departments, with a job `title` and `is_primary`; a user holds each `(organization, department)` pair once, no department included |
+
+```mermaid
+erDiagram
+    identity_users ||--o{ identity_user_phones : "keeps"
+    identity_users ||--o{ identity_user_addresses : "keeps"
+    identity_users ||--o{ identity_organization_memberships : "holds"
+    identity_organizations ||--o{ identity_organization_departments : "has"
+    identity_organizations ||--o{ identity_organization_memberships : "has members"
+    identity_organization_departments |o--o{ identity_organization_memberships : "SET NULL on delete"
+
+    identity_user_phones {
+        uuid id PK
+        uuid user_id FK "unique with number"
+        varchar(32) label
+        varchar(16) number UK "E.164"
+        bool is_primary "one per user"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    identity_user_addresses {
+        uuid id PK
+        uuid user_id FK
+        varchar(32) label
+        varchar(255) line1
+        varchar(255) line2 "nullable"
+        varchar(255) locality "nullable"
+        varchar(255) region "nullable"
+        varchar(20) postal_code "nullable"
+        char(2) country_code "ISO 3166-1 alpha-2"
+        bool is_primary "one per user"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    identity_organizations {
+        uuid id PK
+        varchar(255) name UK "case-insensitive"
+        text description "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    identity_organization_departments {
+        uuid id PK
+        uuid organization_id FK "unique with lower(name)"
+        varchar(255) name
+        text description "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    identity_organization_memberships {
+        uuid id PK
+        uuid user_id FK
+        uuid organization_id FK
+        uuid department_id FK "nullable, same organization"
+        varchar(255) title "nullable"
+        bool is_primary "one per user"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+```
+
 ## Entity-relationship diagram
 
-The diagram covers the core, mfa and external-identity sets. Solid lines are foreign keys, and every foreign key in the schema is `ON DELETE CASCADE`, so deleting a user removes their assignments, grants, sessions (with generations and aliases), mfa rows and linked external identities, and deleting a session removes its generations and aliases. The dotted lines from `security_token_revocations` are logical references through `subject` without a constraint. `security_verifying_keys` and `security_flow_states` stand alone, and `mfa_challenges.code_factor_id` refers to a factor without a foreign key. The cluster tables have no foreign keys and are drawn separately in [federation storage](federation.md).
+The diagram covers the core, mfa and external-identity sets; the profile set has its own diagram [above](#profile-tables). Solid lines are foreign keys, and every foreign key in these sets is `ON DELETE CASCADE`, so deleting a user removes their assignments, grants, sessions (with generations and aliases), mfa rows and linked external identities, and deleting a session removes its generations and aliases. The dotted lines from `security_token_revocations` are logical references through `subject` without a constraint. `security_verifying_keys` and `security_flow_states` stand alone, and `mfa_challenges.code_factor_id` refers to a factor without a foreign key. The cluster tables have no foreign keys and are drawn separately in [federation storage](federation.md).
 
 ```mermaid
 erDiagram
@@ -474,9 +549,31 @@ Which column of a grant row is filled for which permission kind is enforced by z
 | `identity_external_identities` | `idx_identity_external_identities_user` | index on `(user_id, created_at)` | A user's identities, oldest first |
 | `security_flow_states` | `idx_security_flow_states_expires_at` | index on `expires_at` | Purge of expired flow states |
 
+### Profile constraints and indexes
+
+| Table | Name | Kind | Rule or purpose |
+|---|---|---|---|
+| `identity_user_phones` | `uq_identity_user_phones_number` | unique constraint on `(user_id, number)` | A user keeps a number once; also serves a user's phones and the foreign key |
+| `identity_user_phones` | `uq_identity_user_phones_primary` | partial unique index on `user_id` where `is_primary` | At most one primary phone per user |
+| `identity_user_phones` | `chk_identity_user_phones_label` | check | The trimmed label has 1 to 32 characters |
+| `identity_user_phones` | `chk_identity_user_phones_number` | check | `number ~ '^\+[1-9][0-9]{6,14}$'` (E.164) |
+| `identity_user_addresses` | `idx_identity_user_addresses_user` | index on `(user_id, created_at)` | A user's addresses, oldest first; also serves the foreign key |
+| `identity_user_addresses` | `uq_identity_user_addresses_primary` | partial unique index on `user_id` where `is_primary` | At most one primary address per user |
+| `identity_user_addresses` | `chk_identity_user_addresses_label` | check | The trimmed label has 1 to 32 characters |
+| `identity_user_addresses` | `chk_identity_user_addresses_line1` | check | `line1` is not blank |
+| `identity_user_addresses` | `chk_identity_user_addresses_country_code` | check | `country_code ~ '^[A-Z]{2}$'` |
+| `identity_organizations` | `identity_organizations_name_key` | unique index on `lower(name)` | Unique organization names, case-insensitively |
+| `identity_organizations` | `chk_identity_organizations_name` | check | `name` is not blank |
+| `identity_organization_departments` | `identity_organization_departments_name_key` | unique index on `(organization_id, lower(name))` | Unique department names within an organization; also serves the organization's departments and the foreign key |
+| `identity_organization_departments` | `uq_identity_organization_departments_organization_id` | unique constraint on `(organization_id, id)` | Target of the memberships' composite foreign key |
+| `identity_organization_departments` | `chk_identity_organization_departments_name` | check | `name` is not blank |
+| `identity_organization_memberships` | `uq_identity_organization_memberships_member` | unique constraint `NULLS NOT DISTINCT` on `(user_id, organization_id, department_id)` | A user holds each pair once, no department counting as one value; also serves a user's memberships and the user foreign key |
+| `identity_organization_memberships` | `idx_identity_organization_memberships_organization` | index on `(organization_id, department_id, created_at)` | An organization's or a department's members, oldest first; also serves both organization foreign keys |
+| `identity_organization_memberships` | `uq_identity_organization_memberships_primary` | partial unique index on `user_id` where `is_primary` | At most one primary membership per user |
+
 ### Foreign keys
 
-Every foreign key cascades on delete. There are no foreign keys into or out of the cluster tables, and none from `security_token_revocations`.
+Every foreign key cascades on delete, except `fk_identity_organization_memberships_department`, which sets only `department_id` to NULL so that the members of a deleted department stay in its organization. There are no foreign keys into or out of the cluster tables, and none from `security_token_revocations`.
 
 | Name | From | To |
 |---|---|---|
@@ -497,9 +594,15 @@ Every foreign key cascades on delete. There are no foreign keys into or out of t
 | `fk_mfa_challenges_user_id` | `mfa_challenges.user_id` | `identity_users.id` |
 | `fk_mfa_user_state_user_id` | `mfa_user_state.user_id` | `identity_users.id` |
 | `fk_identity_external_identities_user_id` | `identity_external_identities.user_id` | `identity_users.id` |
+| `fk_identity_user_phones_user_id` | `identity_user_phones.user_id` | `identity_users.id` |
+| `fk_identity_user_addresses_user_id` | `identity_user_addresses.user_id` | `identity_users.id` |
+| `fk_identity_organization_departments_organization_id` | `identity_organization_departments.organization_id` | `identity_organizations.id` |
+| `fk_identity_organization_memberships_user_id` | `identity_organization_memberships.user_id` | `identity_users.id` |
+| `fk_identity_organization_memberships_organization_id` | `identity_organization_memberships.organization_id` | `identity_organizations.id` |
+| `fk_identity_organization_memberships_department` | `identity_organization_memberships.(organization_id, department_id)` | `identity_organization_departments.(organization_id, id)`, `ON DELETE SET NULL (department_id)` |
 
 The session-store schema keeps `fk_security_session_generations_session_id` and `fk_security_session_fork_aliases_session` but has no `fk_security_sessions_user_id`, because it has no users table.
 
 ## Constraint names and domain errors
 
-Eight of the unique indexes and constraints above double as the source of domain errors. When an insert or update violates one of them, PostgreSQL reports SQLSTATE `23505` with the constraint name, and `map_sqlx_error` in `src/errors.rs` translates the names listed in `src/constants.rs` into `AuthError::EmailAlreadyTaken`, `UsernameAlreadyTaken`, `RoleAlreadyExists`, `PermissionAlreadyExists`, `RoleAlreadyAssigned`, `SecondFactorAlreadyEnrolled` or `ExternalIdentityLinkedElsewhere`, the last from `uq_identity_external_identities_subject` when an identity is already linked to another user. Renaming one of those indexes in a migration therefore silently turns a precise error into `AuthError::Storage`; the constant must change in the same commit. Allowed status, scope and reason values need no such mapping, because the ENUM types reject anything else before a check could. The full table is in [internals](internals.md#error-mapping).
+Twelve of the unique indexes and constraints above double as the source of domain errors, and six foreign keys of the profile set do too. When an insert or update violates one of them, PostgreSQL reports SQLSTATE `23505` with the constraint name, and `map_sqlx_error` in `src/errors.rs` translates the names listed in `src/constants.rs` into `AuthError::EmailAlreadyTaken`, `UsernameAlreadyTaken`, `RoleAlreadyExists`, `PermissionAlreadyExists`, `RoleAlreadyAssigned`, `SecondFactorAlreadyEnrolled` `ExternalIdentityLinkedElsewhere`, the last from `uq_identity_external_identities_subject` when an identity is already linked to another user, or, from the profile set, `PhoneAlreadyAdded`, `OrganizationAlreadyExists`, `DepartmentAlreadyExists` and `MembershipAlreadyExists`. A foreign-key violation (SQLSTATE `23503`) of a profile table becomes `UserNotFound`, `OrganizationNotFound` or `DepartmentNotFound` by the same mechanism, the last from the composite key when a membership names a department of another organization. Renaming one of those indexes in a migration therefore silently turns a precise error into `AuthError::Storage`; the constant must change in the same commit. Allowed status, scope and reason values need no such mapping, because the ENUM types reject anything else before a check could. The full table is in [internals](internals.md#error-mapping).

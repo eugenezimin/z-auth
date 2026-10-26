@@ -1,8 +1,8 @@
 # z-auth-postgres
 
-`z-auth-postgres` is the reference PostgreSQL adapter for z-auth. It implements every storage port that the core `z-auth` crate and its optional extensions `z-auth-cluster` and `z-auth-mfa` define, including the optional external-identity ports, using `sqlx` 0.8 with the Tokio runtime. The dependency points one way only. The core crate never depends on this adapter, so a host application can use it as is, copy and adapt it, or write its own adapter against the same traits; nothing in z-auth assumes PostgreSQL.
+`z-auth-postgres` is the reference PostgreSQL adapter for z-auth. It implements every storage port that the core `z-auth` crate and its optional extensions `z-auth-cluster` and `z-auth-mfa` define, including the optional external-identity, profile and organization ports, using `sqlx` 0.8 with the Tokio runtime. The dependency points one way only. The core crate never depends on this adapter, so a host application can use it as is, copy and adapt it, or write its own adapter against the same traits; nothing in z-auth assumes PostgreSQL.
 
-The crate ships four things. It provides repository types (`PgUserRepository`, `PgSessionRepository` and the rest) that turn the port calls into SQL, a connection-pool helper that reads `DB_*` environment variables or the `database` section of a configuration file, five embedded migration sets that build the schema, and the `setup_db` binary that creates and upgrades a development database. The guides in [`docs/`](docs/) describe the schema, the migrations, the federation storage and the query internals in depth; this page is the starting point.
+The crate ships four things. It provides repository types (`PgUserRepository`, `PgSessionRepository` and the rest) that turn the port calls into SQL, a connection-pool helper that reads `DB_*` environment variables or the `database` section of a configuration file, six embedded migration sets that build the schema, and the `setup_db` binary that creates and upgrades a development database. The guides in [`docs/`](docs/) describe the schema, the migrations, the federation storage and the query internals in depth; this page is the starting point.
 
 ## Public API
 
@@ -20,6 +20,7 @@ Everything a host needs is re-exported from the crate root, except `connect_opti
 | `SESSION_STORE_MIGRATOR`, `run_session_store_migrations(&pool)` | static, async function | `federation` | The self-contained session-store schema in `migrations_session_store/` for non-authority services |
 | `MFA_MIGRATOR`, `run_mfa_migrations(&pool)` | static, async function | `mfa` | The mfa set in `migrations_mfa/`; the function applies the core set first |
 | `EXTERNAL_MIGRATOR`, `run_external_migrations(&pool)` | static, async function | `external-identity` | The external-identity set in `migrations_external/`; the function applies the core set first |
+| `PROFILE_MIGRATOR`, `run_profile_migrations(&pool)` | static, async function | `profile` | The profile set in `migrations_profile/` (PostgreSQL 15 or later); the function applies the core set first |
 | `tx` | module | none | Every repository statement as a free function over `&mut PgConnection` (`tx::users`, `tx::roles`, `tx::user_roles`, `tx::permissions`, `tx::revocations`, `tx::keys`, `tx::sessions`), so a host can change z-auth state and its own tables in one transaction. Adds `users::create_with_id`, `users::set_verified` and `roles::create_with_id`, which have no port method |
 
 The repository types each wrap a `PgPool` and are built with `new(pool)`. Every one of them implements exactly one port.
@@ -38,6 +39,8 @@ The repository types each wrap a `PgPool` and are built with `new(pool)`. Every 
 | `PgMfaRepository` | `MfaRepository` | `z_auth_mfa::repository` | `mfa` |
 | `PgExternalIdentityRepository` | `ExternalIdentityRepository` | `z_auth::identity::external` | `external-identity` |
 | `PgFlowStateRepository` | `FlowStateRepository` | `z_auth::security::authentication` | `external-identity` |
+| `PgProfileRepository` | `ProfileRepository` | `z_auth::identity::profile` | `profile` |
+| `PgOrganizationRepository` | `OrganizationRepository` | `z_auth::identity::organization` | `profile` |
 
 ### One transaction with the host
 
@@ -53,11 +56,11 @@ tx.commit().await?;
 
 Functions documented as running several statements (`permissions::create`, `permissions::replace_*_grant`, `permissions::load_catalog`, `sessions::create`, `sessions::rotate`) must run inside a transaction. Queries are unqualified, so the connection's `search_path` selects the schema. Writes made this way bypass z-auth's services: the host is responsible for what those services would otherwise do, such as ending sessions and recording a revocation when it deactivates a user, and for keeping the in-memory denylist, key ring and catalog of running instances current.
 
-`PgPermissionRepository` is not part of `repositories(&pool)` because the core treats it as optional. The same holds for `PgExternalIdentityRepository` and `PgFlowStateRepository`, which are passed together with `.external_identities(...)` when the host signs users in through external identity providers. It is passed to the builder with `.permissions(...)` and is required when `AUTH_AUTHZ_MODE` is `permissions` or `combined`. `PgSyncStore` also has an inherent `next_account_version()` method that draws the next account-snapshot version on the authority.
+`PgPermissionRepository` is not part of `repositories(&pool)` because the core treats it as optional. The same holds for `PgExternalIdentityRepository` and `PgFlowStateRepository`, which are passed together with `.external_identities(...)` when the host signs users in through external identity providers, and for `PgProfileRepository` and `PgOrganizationRepository`, which are passed with `.profiles(...)` and `.organizations(...)` when users may keep phones, addresses and organization memberships. It is passed to the builder with `.permissions(...)` and is required when `AUTH_AUTHZ_MODE` is `permissions` or `combined`. `PgSyncStore` also has an inherent `next_account_version()` method that draws the next account-snapshot version on the authority.
 
 ## Features
 
-No feature is enabled by default, and the default build depends only on `z-auth`, `sqlx`, `tokio`, `chrono`, `uuid`, `serde_json` and `async-trait`. Each of the first three features pulls in one optional crate and adds the matching repository and migration set. `external-identity` pulls in nothing, because its ports are defined by the core.
+No feature is enabled by default, and the default build depends only on `z-auth`, `sqlx`, `tokio`, `chrono`, `uuid`, `serde_json` and `async-trait`. Each of the first three features pulls in one optional crate and adds the matching repository and migration set. `external-identity` and `profile` pull in nothing, because their ports are defined by the core.
 
 | Feature | Enables | Adds |
 |---|---|---|
@@ -65,6 +68,7 @@ No feature is enabled by default, and the default build depends only on `z-auth`
 | `federation` | `shared` plus `z-auth-cluster/federation` | `PgSyncStore`, `SESSION_STORE_MIGRATOR`, `run_session_store_migrations` |
 | `mfa` | `z-auth-mfa` with `default-features = false` | `PgMfaRepository`, `MFA_MIGRATOR`, `run_mfa_migrations` |
 | `external-identity` | nothing beyond the default build | `PgExternalIdentityRepository`, `PgFlowStateRepository`, `EXTERNAL_MIGRATOR`, `run_external_migrations` |
+| `profile` | nothing beyond the default build | `PgProfileRepository`, `PgOrganizationRepository`, `PROFILE_MIGRATOR`, `run_profile_migrations` |
 
 A host that runs a federated authority with two-factor authentication would therefore declare the dependency as follows.
 
@@ -89,6 +93,8 @@ flowchart LR
         K[KeyRepository]
         EI["ExternalIdentityRepository (optional)"]
         FS["FlowStateRepository (optional)"]
+        PR["ProfileRepository (optional)"]
+        OR["OrganizationRepository (optional)"]
     end
     subgraph ext["extension ports"]
         N["NodeRepository (cluster)"]
@@ -107,6 +113,8 @@ flowchart LR
     M --> PgM[PgMfaRepository]
     EI --> PgEI[PgExternalIdentityRepository]
     FS --> PgFS[PgFlowStateRepository]
+    PR --> PgPR[PgProfileRepository]
+    OR --> PgOR[PgOrganizationRepository]
     PgU --> TI["identity_users"]
     PgR --> TR["identity_roles"]
     PgUR --> TRA["identity_role_assignments"]
@@ -122,6 +130,8 @@ flowchart LR
     PgM --> TM["mfa_ tables"]
     PgEI --> TEI["identity_external_identities"]
     PgFS --> TFS["security_flow_states"]
+    PgPR --> TPR["identity_user_phones, identity_user_addresses"]
+    PgOR --> TOR["identity_organizations, departments, memberships"]
 ```
 
 `PgSyncStore` is the only type that writes across groups. It reads and replaces whole session aggregates, merges revocations and keys arriving from other clusters, and maintains the `cluster_` federation tables; [federation storage](docs/federation.md) explains how.
@@ -256,6 +266,34 @@ async fn build_with_external_identities() -> Result<ZAuth, Box<dyn std::error::E
 
 `ZAuth::tick` deletes expired flow states, so the periodic `tick` the host already runs keeps `security_flow_states` small. The external-identity set can be combined with the cluster and mfa sets in the same way as they combine with each other. Neither of its tables is in the cluster change feed, because external sign-in and linking happen at the authority only.
 
+### Profiles and organizations
+
+With the `profile` feature, `run_profile_migrations` applies the core set and then the tables for phones, addresses, organizations, departments and memberships, and the two repositories are handed to the builder. They are independent, so a host that only wants phones and addresses passes `.profiles(...)` alone. The set needs PostgreSQL 15 or later, for `UNIQUE NULLS NOT DISTINCT` and `ON DELETE SET NULL` with a column list.
+
+```rust
+use std::sync::Arc;
+
+use z_auth::ZAuth;
+use z_auth::conf::config::{ConfigLoader, EnvLoader};
+use z_auth_postgres::{
+    PgConfig, PgOrganizationRepository, PgProfileRepository, build_pg_pool, repositories,
+    run_profile_migrations,
+};
+
+async fn build_with_profiles() -> Result<ZAuth, Box<dyn std::error::Error>> {
+    let pool = build_pg_pool(&PgConfig::from_env()?).await?;
+    run_profile_migrations(&pool).await?; // core, then profile tables
+    let auth = ZAuth::builder(EnvLoader.load_config()?, repositories(&pool))
+        .profiles(Arc::new(PgProfileRepository::new(pool.clone())))
+        .organizations(Arc::new(PgOrganizationRepository::new(pool.clone())))
+        .build()?;
+    auth.start().await?;
+    Ok(auth)
+}
+```
+
+Every write that can change a user's primary phone, address or membership runs in one transaction that first locks the user's row with `SELECT ... FOR NO KEY UPDATE`, so concurrent changes for one user wait for each other instead of tripping the partial unique index that allows one primary item per user. The lock does not conflict with the `KEY SHARE` locks that foreign keys take, so it never blocks inserts that merely reference the user. None of the profile tables is in the cluster change feed, and the [user profiles guide](../../docs/user-profile.md) describes the rules the tables serve.
+
 ## Configuration
 
 `PgConfig::from_env()` reads seven variables. Three are required and the call fails with a `missing env var ...` message when one of them is absent; the others fall back to the defaults in `src/constants.rs`. Numeric values that do not parse produce an `invalid ...` error instead of silently using the default.
@@ -333,7 +371,7 @@ async fn pool_with_awkward_password() -> Result<sqlx::PgPool, sqlx::Error> {
 
 The `mfa` feature depends on `z-auth-mfa` with `default-features = false`, which means the adapter alone does not enable z-auth-mfa's `aead` feature and its built-in XChaCha20-Poly1305 sealer. A host normally depends on `z-auth-mfa` directly with default features, and Cargo's feature unification then turns `aead` on for the whole build. A host that disables the default features of its own `z-auth-mfa` dependency must supply a sealer with `Mfa::with_sealer`, otherwise `ZAuth::builder(...).build()` fails with an `AuthError::Config` when the extension is configured.
 
-`setup_db` only knows the core, cluster, mfa and external-identity sets. It cannot install the session-store schema, and pointing it at a session-store database makes it refuse, because the session store's `0001` and `0002` have different checksums from the core files with the same versions. Install a session store from the service itself with `run_session_store_migrations`, as described in [federation storage](docs/federation.md).
+`setup_db` only knows the core, cluster, mfa, external-identity and profile sets. It cannot install the session-store schema, and pointing it at a session-store database makes it refuse, because the session store's `0001` and `0002` have different checksums from the core files with the same versions. Install a session store from the service itself with `run_session_store_migrations`, as described in [federation storage](docs/federation.md).
 
 The session store must live in a schema of its own. `SESSION_STORE_MIGRATOR` does not ignore unknown versions, and its versions overlap the core set's, so it fails if the target schema's `_sqlx_migrations` already holds any other set.
 
@@ -341,7 +379,7 @@ Assigning a role that a user already holds does not produce `RoleAlreadyAssigned
 
 ## Module layout
 
-The crate is small enough to read end to end. SQL lives in constants under `queries/`, is executed by the free functions in `tx/` that the repositories wrap, rows are decoded into private structs and converted into domain types at the boundary, and the cluster, mfa and external-identity code compiles only with its feature.
+The crate is small enough to read end to end. SQL lives in constants under `queries/`, is executed by the free functions in `tx/` that the repositories wrap, rows are decoded into private structs and converted into domain types at the boundary, and the cluster, mfa, external-identity and profile code compiles only with its feature.
 
 ```text
 adapters/postgres/
@@ -353,8 +391,10 @@ adapters/postgres/
 │   └── 1001_cluster_schema.sql
 ├── migrations_mfa/                 mfa set, versions 2001 to 2999 (feature mfa)
 │   └── 2001_mfa_schema.sql
-├── migrations_external/            external-identity set, versions from 3001 (feature external-identity)
+├── migrations_external/            external-identity set, versions 3001 to 3999 (feature external-identity)
 │   └── 3001_external_identity_schema.sql
+├── migrations_profile/             profile set, versions from 4001 (feature profile)
+│   └── 4001_profile_schema.sql
 ├── migrations_session_store/       session-store schema (feature federation)
 │   ├── 0001_session_store.sql
 │   └── 0002_session_amr.sql
@@ -396,6 +436,12 @@ adapters/postgres/
 │   ├── external/                   feature external-identity
 │   │   ├── external_repository.rs  PgExternalIdentityRepository, PgFlowStateRepository
 │   │   └── external_queries.rs
+│   ├── profile/                    feature profile
+│   │   ├── mod.rs                  the per-user transaction helpers
+│   │   ├── profile_repository.rs   PgProfileRepository
+│   │   ├── profile_queries.rs
+│   │   ├── organization_repository.rs  PgOrganizationRepository
+│   │   └── organization_queries.rs
 │   └── bin/
 │       └── setup_db.rs             development database setup
 └── tests/                          integration tests against a real database
@@ -414,24 +460,25 @@ cargo test -p z-auth-postgres
 cargo test -p z-auth-postgres --all-features
 ```
 
-The plain run covers the core repositories. Five test binaries declare `required-features` and only run with `--all-features` or the specific feature, and the `migrations` binary has extra cases behind `shared` and `mfa`.
+The plain run covers the core repositories. Six test binaries declare `required-features` and only run with `--all-features` or the specific feature, and the `migrations` binary has extra cases behind `shared`, `mfa` and `profile`.
 
 | Test binary | Feature | Covers |
 |---|---|---|
 | `register_user`, `roles`, `user_role`, `permissions` | none | Identity and authorization repositories, error mapping |
 | `sessions` | none | Session lifecycle, rotation, purge, revocation round trips |
 | `keys` | none | Exactly-once revocation enforcement, verifying key publication and revocation |
-| `migrations` | none (more cases with `shared`, `mfa`) | Recorded versions, idempotent reruns, ENUM types, UTC sessions |
+| `migrations` | none (more cases with `shared`, `mfa`, `profile`) | Recorded versions, idempotent reruns, ENUM types, UTC sessions |
 | `node_registry` | `shared` | Guarded node transitions and eviction |
 | `sync` | `federation` | Feed paging, commit-order safety, merges, cursors, snapshots |
 | `federation` | `federation` | Login at an authority, refresh and logout at a session store |
 | `mfa` | `mfa` | `PgMfaRepository` end to end with the built-in sealer |
 | `external_identity` | `external-identity` | Identity round trips, one owner per `(issuer, subject)`, deletion with the user, single-use and expiring flow states, and a sign-in linked through the password |
+| `profile` | `profile` | Phone, address, organization, department and membership round trips, constraint-to-error mapping, per-user scoping, concurrent primary changes, and the deletion cascades |
 
 All tests use unique names and can run in parallel against one database. The `sync` and `federation` tests create the `cluster_sync_site` row in the test database, which switches change capture on there for good; the session-store schemas they create are dropped at the end of each test, but an interrupted run can leave one behind.
 
 ## Guides
 
-The [schema reference](docs/schema.md) documents every table, column, ENUM type, sequence, constraint and index, with an entity-relationship diagram. [Migrations](docs/migrations.md) covers the five migration sets, how to add a migration or an ENUM value, the baseline history and the `setup_db` binary. [Federation storage](docs/federation.md) explains the authority and session-store databases, the trigger-driven change feed and the sync store. [Internals](docs/internals.md) walks through error mapping, the refresh rotation transaction and the compare-and-swap queries.
+The [schema reference](docs/schema.md) documents every table, column, ENUM type, sequence, constraint and index, with an entity-relationship diagram. [Migrations](docs/migrations.md) covers the six migration sets, how to add a migration or an ENUM value, the baseline history and the `setup_db` binary. [Federation storage](docs/federation.md) explains the authority and session-store databases, the trigger-driven change feed and the sync store. [Internals](docs/internals.md) walks through error mapping, the refresh rotation transaction and the compare-and-swap queries.
 
-For the wider picture, the workspace guides describe the [storage ports](../../docs/storage-ports.md) this crate implements, the [configuration](../../docs/configuration.md) of z-auth itself and the [sessions and tokens](../../docs/sessions-and-tokens.md) model the session tables persist. The [z-auth-cluster](../cluster/README.md) and [z-auth-mfa](../mfa/README.md) crates document the extensions whose storage lives here, and the [external identities guide](../../docs/external-identities.md) and [z-auth-sso](../sso/README.md) document the sign-in that the external-identity tables serve.
+For the wider picture, the workspace guides describe the [storage ports](../../docs/storage-ports.md) this crate implements, the [configuration](../../docs/configuration.md) of z-auth itself and the [sessions and tokens](../../docs/sessions-and-tokens.md) model the session tables persist. The [z-auth-cluster](../cluster/README.md) and [z-auth-mfa](../mfa/README.md) crates document the extensions whose storage lives here, the [external identities guide](../../docs/external-identities.md) and [z-auth-sso](../sso/README.md) document the sign-in that the external-identity tables serve, and the [user profiles guide](../../docs/user-profile.md) documents the data the profile tables keep.
