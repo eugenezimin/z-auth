@@ -39,10 +39,15 @@
 //!   ([`PgExternalIdentityRepository`]), flow states
 //!   ([`PgFlowStateRepository`]) and their migration set
 //!   ([`EXTERNAL_MIGRATOR`], [`run_external_migrations`]).
+//! - `profile` — users' phones and addresses ([`PgProfileRepository`]), the
+//!   organization catalog and memberships ([`PgOrganizationRepository`]),
+//!   and their migration set ([`PROFILE_MIGRATOR`],
+//!   [`run_profile_migrations`]; PostgreSQL 15 or later).
 //!
 //! The migration sets share `_sqlx_migrations` and never collide: core
 //! versions are below 1000, cluster versions 1001–1999, mfa versions
-//! 2001–2999, external-identity versions from 3001.
+//! 2001–2999, external-identity versions 3001–3999, profile versions from
+//! 4001.
 //!
 //! ```rust,ignore
 //! // features = ["external-identity"]
@@ -52,6 +57,15 @@
 //!         Arc::new(PgExternalIdentityRepository::new(pool.clone())),
 //!         Arc::new(PgFlowStateRepository::new(pool.clone())),
 //!     )
+//!     .build()?;
+//! ```
+//!
+//! ```rust,ignore
+//! // features = ["profile"]
+//! run_profile_migrations(&pool).await?;   // core, then profile tables
+//! let auth = ZAuth::builder(config, repositories(&pool))
+//!     .profiles(Arc::new(PgProfileRepository::new(pool.clone())))
+//!     .organizations(Arc::new(PgOrganizationRepository::new(pool.clone())))
 //!     .build()?;
 //! ```
 //!
@@ -78,6 +92,8 @@ mod key_repository;
 mod mfa;
 mod permission_repository;
 pub mod pool;
+#[cfg(feature = "profile")]
+mod profile;
 mod queries;
 mod revocation_repository;
 mod role_repository;
@@ -99,6 +115,8 @@ pub use key_repository::PgKeyRepository;
 pub use mfa::PgMfaRepository;
 pub use permission_repository::PgPermissionRepository;
 pub use pool::build_pg_pool;
+#[cfg(feature = "profile")]
+pub use profile::{PgOrganizationRepository, PgProfileRepository};
 pub use revocation_repository::PgRevocationRepository;
 pub use role_repository::PgRoleRepository;
 pub use session_repository::PgSessionRepository;
@@ -203,6 +221,24 @@ pub async fn run_external_migrations(
 ) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATOR.run(pool).await?;
     EXTERNAL_MIGRATOR.run(pool).await
+}
+
+/// Users' phones and addresses, organizations, departments and memberships
+/// (`migrations_profile/`, versions from 4001; PostgreSQL 15 or later).
+/// Applied on top of [`MIGRATOR`]; see [`run_profile_migrations`].
+#[cfg(feature = "profile")]
+pub static PROFILE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate::Migrator {
+    ignore_missing: true,
+    ..sqlx::migrate!("./migrations_profile")
+};
+
+/// Apply every pending core migration, then every pending profile one.
+#[cfg(feature = "profile")]
+pub async fn run_profile_migrations(
+    pool: &sqlx::PgPool,
+) -> Result<(), sqlx::migrate::MigrateError> {
+    MIGRATOR.run(pool).await?;
+    PROFILE_MIGRATOR.run(pool).await
 }
 
 /// Apply every pending core migration, then every pending cluster one.

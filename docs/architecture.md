@@ -4,7 +4,7 @@ This guide describes how the core crate is organised and why. It covers the modu
 
 ## Module layout
 
-The crate is split into six top-level modules. `identity` holds user accounts, password credentials and roles. `security` holds authentication (login, refresh, the second-factor and refresh gates), authorization (permissions, token claims, request-time checks), sessions and tokens. `eventing` holds the domain events and the publisher port, `conf` the configuration model, loaders and constants, `utils` the shared kernel (error type, clock, serving fence, validation), and `controller` the entry points, which are the `ZAuth` facade, the `Extension` port, the framework-agnostic API layer and the prelude.
+The crate is split into six top-level modules. `identity` holds user accounts, password credentials, roles, linked external identities, and the optional profile data (phones and addresses) and organization memberships. `security` holds authentication (login, refresh, the second-factor and refresh gates), authorization (permissions, token claims, request-time checks), sessions and tokens. `eventing` holds the domain events and the publisher port, `conf` the configuration model, loaders and constants, `utils` the shared kernel (error type, clock, serving fence, validation), and `controller` the entry points, which are the `ZAuth` facade, the `Extension` port, the framework-agnostic API layer and the prelude.
 
 ```text
 src/
@@ -32,6 +32,8 @@ src/
 │   │   ├── argon2.rs           Argon2Hasher (feature argon2)
 │   │   ├── hasher.rs           PasswordHasher port
 │   │   └── policy.rs           validate_password
+│   ├── organization/           organization catalog, departments and memberships (model, repository, service, service_impl, validation)
+│   ├── profile/                phones and addresses (model, repository, service, service_impl, validation)
 │   └── user/                   accounts (model, repository, service, service_impl)
 │       ├── sessions.rs         AccountSessions port, AccountChange
 │       └── validation.rs       normalize_email, validate_email
@@ -73,7 +75,7 @@ src/
     ├── error.rs                AuthError
     ├── fence.rs                ServingFence
     ├── random.rs               OS randomness (crate-private)
-    └── validation.rs           validate_code
+    └── validation.rs           validate_code, required_text, optional_text
 ```
 
 ## The bounded-context file pattern
@@ -224,6 +226,8 @@ The own verifying key is published after the extensions started, so that a clust
 | `permissions()` | `&dyn PermissionService` | Catalog and grants, in the `permissions` and `combined` modes |
 | `authorizer()` | `&dyn Authorizer` | Request-time checks from verified claims |
 | `authentication()` | `&dyn AuthenticationService` | Login, complete_login, refresh, logout, verification, session purge |
+| `profiles()` | `&dyn ProfileService` | Users' phones and addresses, with `ZAuthBuilder::profiles` (otherwise every call fails with `AuthError::Config`) |
+| `organizations()` | `&dyn OrganizationService` | The organization catalog and memberships, with `ZAuthBuilder::organizations` (otherwise every call fails with `AuthError::Config`) |
 | `revocation()` | `&dyn TokenRevocationService` | Revoking tokens, sessions and users |
 | `verifier()` | `&TokenVerifier` | Synchronous access-token verification |
 | `denylist()` | `&Arc<Denylist>` | The in-memory denylist used by the verifier |

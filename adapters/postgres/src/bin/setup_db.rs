@@ -4,6 +4,7 @@
 //! Cluster:   cargo run -p z-auth-postgres --features shared --bin setup_db -- --cluster
 //! 2FA:       cargo run -p z-auth-postgres --features mfa --bin setup_db -- --mfa
 //! SSO:       cargo run -p z-auth-postgres --features external-identity --bin setup_db -- --external
+//! Profiles:  cargo run -p z-auth-postgres --features profile --bin setup_db -- --profile
 //!
 //! Reads connection details from the environment (a `.env` file in the
 //! current directory is loaded first, if present).  Expected variables:
@@ -20,8 +21,10 @@
 //!    With `--cluster` (feature `shared`) it then applies z-auth-cluster's
 //!    set from `migrations_cluster` (versions from 1001), with `--mfa`
 //!    (feature `mfa`) z-auth-mfa's set from `migrations_mfa` (versions from
-//!    2001), and with `--external` (feature `external-identity`) the
-//!    external-identity set from `migrations_external` (versions from 3001).
+//!    2001), with `--external` (feature `external-identity`) the
+//!    external-identity set from `migrations_external` (versions from 3001),
+//!    and with `--profile` (feature `profile`) the profile set from
+//!    `migrations_profile` (versions from 4001).
 //!    A database built with the migrations replaced by the current baseline
 //!    (the old 0001–0008) is refused with a hint to rerun with `--reset`.
 
@@ -39,6 +42,8 @@ use z_auth_postgres::CLUSTER_MIGRATOR;
 use z_auth_postgres::EXTERNAL_MIGRATOR;
 #[cfg(feature = "mfa")]
 use z_auth_postgres::MFA_MIGRATOR;
+#[cfg(feature = "profile")]
+use z_auth_postgres::PROFILE_MIGRATOR;
 use z_auth_postgres::{MIGRATOR, PgConfig, constants::ADMIN_DB_NAME, pool::connect_options};
 
 /// Every table z-auth has ever created: the current schema, the names
@@ -46,6 +51,11 @@ use z_auth_postgres::{MIGRATOR, PgConfig, constants::ADMIN_DB_NAME, pool::connec
 /// from pre-migration databases.
 const MANAGED_TABLES: &[&str] = &[
     // current schema
+    "identity_organization_memberships",
+    "identity_organization_departments",
+    "identity_organizations",
+    "identity_user_addresses",
+    "identity_user_phones",
     "security_flow_states",
     "identity_external_identities",
     "mfa_challenges",
@@ -140,6 +150,9 @@ const MFA_VERSIONS: Range<i64> = 2000..3000;
 /// The external-identity set's versions (`migrations_external/`).
 #[cfg_attr(not(feature = "external-identity"), allow(dead_code))]
 const EXTERNAL_VERSIONS: Range<i64> = 3000..4000;
+/// The profile set's versions (`migrations_profile/`).
+#[cfg_attr(not(feature = "profile"), allow(dead_code))]
+const PROFILE_VERSIONS: Range<i64> = 4000..5000;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -177,6 +190,14 @@ async fn main() {
         fatal(
             "--external needs the `external-identity` feature:\n    → cargo run -p \
              z-auth-postgres --features external-identity --bin setup_db -- --external",
+        );
+    }
+    let profile = std::env::args().any(|a| a == "--profile");
+    #[cfg(not(feature = "profile"))]
+    if profile {
+        fatal(
+            "--profile needs the `profile` feature:\n    → cargo run -p z-auth-postgres \
+             --features profile --bin setup_db -- --profile",
         );
     }
     // AUTH_CONFIG_FILE's `database` section, with DB_* on top.
@@ -221,7 +242,8 @@ async fn main() {
     println!();
 
     // 7. Apply pending migrations: core, then (with --cluster / --mfa /
-    //    --external) the cluster, mfa and external-identity sets
+    //    --external / --profile) the cluster, mfa, external-identity and
+    //    profile sets
     check_baseline(&pool).await;
     apply_migrations(&pool, &MIGRATOR, "core").await;
     #[cfg(feature = "shared")]
@@ -235,6 +257,10 @@ async fn main() {
     #[cfg(feature = "external-identity")]
     if external {
         apply_migrations(&pool, &EXTERNAL_MIGRATOR, "external-identity").await;
+    }
+    #[cfg(feature = "profile")]
+    if profile {
+        apply_migrations(&pool, &PROFILE_MIGRATOR, "profile").await;
     }
 
     println!();
@@ -492,6 +518,8 @@ fn known_migrators() -> Vec<(Range<i64>, &'static Migrator)> {
     sets.push((MFA_VERSIONS, &MFA_MIGRATOR));
     #[cfg(feature = "external-identity")]
     sets.push((EXTERNAL_VERSIONS, &EXTERNAL_MIGRATOR));
+    #[cfg(feature = "profile")]
+    sets.push((PROFILE_VERSIONS, &PROFILE_MIGRATOR));
     sets
 }
 

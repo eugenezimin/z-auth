@@ -118,6 +118,28 @@ impl From<AuthError> for ApiError {
                 Self::client(HTTP_NOT_FOUND, "external_identity_not_found", &err)
             }
             LastLoginMethod => Self::client(HTTP_CONFLICT, "last_login_method", &err),
+            InvalidPhoneNumber(_) => {
+                Self::client(HTTP_UNPROCESSABLE_ENTITY, "invalid_phone_number", &err)
+            }
+            InvalidProfileData(_) => {
+                Self::client(HTTP_UNPROCESSABLE_ENTITY, "invalid_profile_data", &err)
+            }
+            PhoneAlreadyAdded => Self::client(HTTP_CONFLICT, "phone_already_added", &err),
+            PhoneNotFound => Self::client(HTTP_NOT_FOUND, "phone_not_found", &err),
+            AddressNotFound => Self::client(HTTP_NOT_FOUND, "address_not_found", &err),
+            ProfileLimitReached(_) => Self::client(HTTP_CONFLICT, "profile_limit_reached", &err),
+            OrganizationAlreadyExists => {
+                Self::client(HTTP_CONFLICT, "organization_already_exists", &err)
+            }
+            OrganizationNotFound => Self::client(HTTP_NOT_FOUND, "organization_not_found", &err),
+            DepartmentAlreadyExists => {
+                Self::client(HTTP_CONFLICT, "department_already_exists", &err)
+            }
+            DepartmentNotFound => Self::client(HTTP_NOT_FOUND, "department_not_found", &err),
+            MembershipAlreadyExists => {
+                Self::client(HTTP_CONFLICT, "membership_already_exists", &err)
+            }
+            MembershipNotFound => Self::client(HTTP_NOT_FOUND, "membership_not_found", &err),
             ReauthenticationRequired => {
                 Self::client(HTTP_UNAUTHORIZED, "reauthentication_required", &err)
             }

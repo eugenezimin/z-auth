@@ -57,3 +57,19 @@ pub const CONSTRAINT_USER_ROLE_ACTIVE: &str = "unique_user_role_active";
 pub const CONSTRAINT_MFA_FACTORS_ACTIVE: &str = "uq_mfa_factors_user_method_active";
 /// See migrations_external/3001_external_identity_schema.sql.
 pub const CONSTRAINT_EXTERNAL_IDENTITIES_SUBJECT: &str = "uq_identity_external_identities_subject";
+
+// See migrations_profile/4001_profile_schema.sql.
+pub const PG_FOREIGN_KEY_VIOLATION: &str = "23503";
+pub const CONSTRAINT_USER_PHONES_NUMBER: &str = "uq_identity_user_phones_number";
+pub const CONSTRAINT_ORGANIZATIONS_NAME: &str = "identity_organizations_name_key";
+pub const CONSTRAINT_DEPARTMENTS_NAME: &str = "identity_organization_departments_name_key";
+pub const CONSTRAINT_MEMBERSHIPS_MEMBER: &str = "uq_identity_organization_memberships_member";
+pub const CONSTRAINT_USER_PHONES_USER: &str = "fk_identity_user_phones_user_id";
+pub const CONSTRAINT_USER_ADDRESSES_USER: &str = "fk_identity_user_addresses_user_id";
+pub const CONSTRAINT_MEMBERSHIPS_USER: &str = "fk_identity_organization_memberships_user_id";
+pub const CONSTRAINT_DEPARTMENTS_ORGANIZATION: &str =
+    "fk_identity_organization_departments_organization_id";
+pub const CONSTRAINT_MEMBERSHIPS_ORGANIZATION: &str =
+    "fk_identity_organization_memberships_organization_id";
+pub const CONSTRAINT_MEMBERSHIPS_DEPARTMENT: &str =
+    "fk_identity_organization_memberships_department";

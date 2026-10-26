@@ -18,7 +18,11 @@
 //! the connection's `search_path` selects the schema.
 
 pub mod keys;
+#[cfg(feature = "profile")]
+pub mod organizations;
 pub mod permissions;
+#[cfg(feature = "profile")]
+pub mod profiles;
 pub mod revocations;
 pub mod roles;
 pub mod sessions;

@@ -1,12 +1,20 @@
 //! Conversions between API DTOs and domain models.
 
 use crate::controller::api::dto::{
-    ChallengeDeliveryDto, CompleteLoginRequest, ConfirmLinkRequest, ExternalIdentityResponse,
+    AddressRequest, AddressResponse, CatalogRefDto, ChallengeDeliveryDto, CompleteLoginRequest,
+    ConfirmLinkRequest, DepartmentRequest, DepartmentResponse, ExternalIdentityResponse,
     ExternalLoginResponse, LinkChallengeResponse, LoginChallengeResponse, LoginRequest,
-    LoginResponse, PermissionCatalogResponse, PermissionDto, PermissionOptionDto, RegisterRequest,
+    LoginResponse, MembershipPageResponse, MembershipRequest, MembershipResponse,
+    OrganizationPageResponse, OrganizationRequest, OrganizationResponse, PermissionCatalogResponse,
+    PermissionDto, PermissionOptionDto, PhoneRequest, PhoneResponse, RegisterRequest,
     RevokeTargetDto, TokenPairResponse, UserResponse,
 };
 use crate::identity::external::ExternalIdentity;
+use crate::identity::organization::{
+    Department, DepartmentInput, DepartmentRef, Membership, MembershipInput, MembershipPage,
+    Organization, OrganizationInput, OrganizationPage, OrganizationRef,
+};
+use crate::identity::profile::{Address, AddressInput, Phone, PhoneInput};
 use crate::identity::user::model::{RegisterUser, User};
 use crate::security::authentication::model::{
     ChallengeDelivery, Credentials, ExternalLoginOutcome, LinkChallenge, LinkConfirmation,
@@ -114,6 +122,167 @@ impl From<ExternalIdentity> for ExternalIdentityResponse {
             email: i.email,
             linked_at: i.created_at,
             last_login_at: i.last_login_at,
+        }
+    }
+}
+
+impl From<PhoneRequest> for PhoneInput {
+    fn from(r: PhoneRequest) -> Self {
+        Self {
+            label: r.label,
+            number: r.number,
+            is_primary: r.is_primary,
+        }
+    }
+}
+
+impl From<Phone> for PhoneResponse {
+    fn from(p: Phone) -> Self {
+        Self {
+            id: p.id,
+            label: p.label,
+            number: p.number,
+            is_primary: p.is_primary,
+            created_at: p.created_at,
+            updated_at: p.updated_at,
+        }
+    }
+}
+
+impl From<AddressRequest> for AddressInput {
+    fn from(r: AddressRequest) -> Self {
+        Self {
+            label: r.label,
+            line1: r.line1,
+            line2: r.line2,
+            locality: r.locality,
+            region: r.region,
+            postal_code: r.postal_code,
+            country_code: r.country_code,
+            is_primary: r.is_primary,
+        }
+    }
+}
+
+impl From<Address> for AddressResponse {
+    fn from(a: Address) -> Self {
+        Self {
+            id: a.id,
+            label: a.label,
+            line1: a.line1,
+            line2: a.line2,
+            locality: a.locality,
+            region: a.region,
+            postal_code: a.postal_code,
+            country_code: a.country_code,
+            is_primary: a.is_primary,
+            created_at: a.created_at,
+            updated_at: a.updated_at,
+        }
+    }
+}
+
+impl From<OrganizationRequest> for OrganizationInput {
+    fn from(r: OrganizationRequest) -> Self {
+        Self {
+            name: r.name,
+            description: r.description,
+        }
+    }
+}
+
+impl From<Organization> for OrganizationResponse {
+    fn from(o: Organization) -> Self {
+        Self {
+            id: o.id,
+            name: o.name,
+            description: o.description,
+            created_at: o.created_at,
+            updated_at: o.updated_at,
+        }
+    }
+}
+
+impl From<OrganizationPage> for OrganizationPageResponse {
+    fn from(p: OrganizationPage) -> Self {
+        Self {
+            items: p.items.into_iter().map(Into::into).collect(),
+            total: p.total,
+        }
+    }
+}
+
+impl From<DepartmentRequest> for DepartmentInput {
+    fn from(r: DepartmentRequest) -> Self {
+        Self {
+            name: r.name,
+            description: r.description,
+        }
+    }
+}
+
+impl From<Department> for DepartmentResponse {
+    fn from(d: Department) -> Self {
+        Self {
+            id: d.id,
+            organization_id: d.organization_id,
+            name: d.name,
+            description: d.description,
+            created_at: d.created_at,
+            updated_at: d.updated_at,
+        }
+    }
+}
+
+impl From<MembershipRequest> for MembershipInput {
+    fn from(r: MembershipRequest) -> Self {
+        Self {
+            organization_id: r.organization_id,
+            department_id: r.department_id,
+            title: r.title,
+            is_primary: r.is_primary,
+        }
+    }
+}
+
+impl From<OrganizationRef> for CatalogRefDto {
+    fn from(r: OrganizationRef) -> Self {
+        Self {
+            id: r.id,
+            name: r.name,
+        }
+    }
+}
+
+impl From<DepartmentRef> for CatalogRefDto {
+    fn from(r: DepartmentRef) -> Self {
+        Self {
+            id: r.id,
+            name: r.name,
+        }
+    }
+}
+
+impl From<Membership> for MembershipResponse {
+    fn from(m: Membership) -> Self {
+        Self {
+            id: m.id,
+            user_id: m.user_id,
+            organization: m.organization.into(),
+            department: m.department.map(Into::into),
+            title: m.title,
+            is_primary: m.is_primary,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        }
+    }
+}
+
+impl From<MembershipPage> for MembershipPageResponse {
+    fn from(p: MembershipPage) -> Self {
+        Self {
+            items: p.items.into_iter().map(Into::into).collect(),
+            total: p.total,
         }
     }
 }

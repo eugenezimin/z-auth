@@ -175,6 +175,43 @@ pub enum AuthError {
     /// The session is too old for this operation; log in again first.
     ReauthenticationRequired,
 
+    /// The supplied phone number is not in international (E.164) format.
+    InvalidPhoneNumber(String),
+
+    /// A profile or organization field did not pass validation (label,
+    /// address line, country code, name, …).
+    InvalidProfileData(String),
+
+    /// The user already has this phone number.
+    PhoneAlreadyAdded,
+
+    /// No such phone number among the user's.
+    PhoneNotFound,
+
+    /// No such address among the user's.
+    AddressNotFound,
+
+    /// The user already keeps as many items of this kind as allowed.
+    ProfileLimitReached(String),
+
+    /// An organization with the given name already exists.
+    OrganizationAlreadyExists,
+
+    /// No organization with the given id.
+    OrganizationNotFound,
+
+    /// The organization already has a department with the given name.
+    DepartmentAlreadyExists,
+
+    /// No such department, or not in the given organization.
+    DepartmentNotFound,
+
+    /// The user already belongs to this organization and department.
+    MembershipAlreadyExists,
+
+    /// No such membership among the user's.
+    MembershipNotFound,
+
     /// Federation mode: this operation belongs to the authority service
     /// (UMS).  `addresses` lists authority instances known to this one.
     NotAuthority {
@@ -290,6 +327,28 @@ impl std::fmt::Display for AuthError {
             Self::ReauthenticationRequired => {
                 write!(f, "log in again to perform this operation")
             }
+            Self::InvalidPhoneNumber(reason) => write!(f, "invalid phone number: {reason}"),
+            Self::InvalidProfileData(reason) => write!(f, "invalid profile data: {reason}"),
+            Self::PhoneAlreadyAdded => write!(f, "the user already has this phone number"),
+            Self::PhoneNotFound => write!(f, "phone number not found"),
+            Self::AddressNotFound => write!(f, "address not found"),
+            Self::ProfileLimitReached(reason) => write!(f, "profile limit reached: {reason}"),
+            Self::OrganizationAlreadyExists => write!(f, "organization name already exists"),
+            Self::OrganizationNotFound => write!(f, "organization not found"),
+            Self::DepartmentAlreadyExists => {
+                write!(
+                    f,
+                    "the organization already has a department with this name"
+                )
+            }
+            Self::DepartmentNotFound => write!(f, "department not found in the organization"),
+            Self::MembershipAlreadyExists => {
+                write!(
+                    f,
+                    "the user already belongs to this organization and department"
+                )
+            }
+            Self::MembershipNotFound => write!(f, "organization membership not found"),
             Self::NotAuthority { service, .. } => {
                 write!(f, "this operation is handled by the '{service}' service")
             }

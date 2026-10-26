@@ -112,6 +112,30 @@ pub const DEFAULT_TEXT_PERMISSION_MAX_LEN: u32 = 64;
 /// Longest role or permission code.  Codes match `^[a-z][a-z0-9_.:-]*$`.
 pub const MAX_CODE_LEN: usize = 64;
 
+// ── User profile & organizations ──────────────────────────────────────────────
+
+/// Phone numbers one user may keep.
+pub const MAX_PHONES_PER_USER: usize = 20;
+
+/// Postal addresses one user may keep.
+pub const MAX_ADDRESSES_PER_USER: usize = 20;
+
+/// Organization memberships one user may hold.
+pub const MAX_MEMBERSHIPS_PER_USER: usize = 20;
+
+/// Longest label of a phone or an address (`work`, `home`), in characters.
+pub const MAX_PROFILE_LABEL_LEN: usize = 32;
+
+/// Longest free-text profile field — address lines, locality, region,
+/// organization and department names, job titles — in characters.
+pub const MAX_PROFILE_TEXT_LEN: usize = 255;
+
+/// Longest postal code, in characters.
+pub const MAX_POSTAL_CODE_LEN: usize = 20;
+
+/// Longest organization or department description, in characters.
+pub const MAX_PROFILE_DESCRIPTION_LEN: usize = 2_000;
+
 // ── Environment variables (read by `config::EnvLoader`) ──────────────────────
 
 /// Base64 Ed25519 signing seed (auth service only).

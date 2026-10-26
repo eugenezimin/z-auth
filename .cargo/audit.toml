@@ -12,4 +12,14 @@ ignore = [
     #   enabled: z-auth-postgres turns on sqlx's `postgres` feature only.
     # Revisit if z-auth ever signs or decrypts with RSA.
     "RUSTSEC-2023-0071",
+    # crypto-bigint 0.5: secret-dependent branches in operations meant to be
+    # constant-time (subtraction, division, Montgomery multiplication), fixed
+    # in 0.7.6.  It is reached only through z-auth-sso (feature `oidc`):
+    # jsonwebtoken's `rust_crypto` backend -> p256 / p384 -> elliptic-curve
+    # 0.13, used solely to verify ES256 / ES384 ID tokens with an identity
+    # provider's public key.  Every operand there is public, so timing reveals
+    # nothing.  jsonwebtoken 11.1.0, the newest release, still depends on the
+    # 0.13 curves.  Revisit when it moves to elliptic-curve 0.14, or if z-auth
+    # ever signs with EC keys through this stack.
+    "RUSTSEC-2026-0387",
 ]

@@ -42,7 +42,7 @@ z-auth/
 
 `z-auth-testkit` lets every suite in the workspace run without a database. It depends on the core with `argon2`, `crypto` and `serde` enabled and is never published. Its centrepiece is `InMemoryDb`, a single type that implements every repository port of the core over one shared, mutex-protected state, so cross-port behaviour such as joins of users and roles or delete cascades matches a relational store. Like a real database it owns the clock, taking every timestamp from the `Clock` it was created with, so tests time-travel by advancing that clock. It also counts repository calls with `calls()`, which the suite uses to prove that verification and authorization checks make none, and exposes inspection helpers such as `generation_numbers(session_id)` and `revocations()`.
 
-The crate root provides the helpers the suites share. `MockClock` is a controllable clock with `advance(Duration)`. `raw_config()` returns a `RawConfig` with freshly generated keys and the issuer `z-auth-test`, and `test_config()` builds it. `repositories(&db)` fills a `Repositories` from one `InMemoryDb`, `server_with(db, clock, config)` builds a `ZAuth` over them with the permission repository and the mock clock wired in and returns it as a `Server` (holding `auth`, `db` and `clock`), `server(config)` does the same over a fresh store, and `make_auth()` returns a ready `ZAuth` with the test configuration. The request helpers are `ctx(ip)`, a `ClientContext` with a test user agent, `register_request(email, username)`, `credentials(email)`, `register(&auth, email)`, `register_and_login(&auth, email, ip)` and `new_role(name)`, and the constants are `VALID_PASSWORD`, `ISSUER`, `IP_A` and `IP_B`.
+The crate root provides the helpers the suites share. `MockClock` is a controllable clock with `advance(Duration)`. `raw_config()` returns a `RawConfig` with freshly generated keys and the issuer `z-auth-test`, and `test_config()` builds it. `repositories(&db)` fills a `Repositories` from one `InMemoryDb`, `server_with(db, clock, config)` builds a `ZAuth` over them with the permission repository and the mock clock wired in and returns it as a `Server` (holding `auth`, `db` and `clock`), `server(config)` does the same over a fresh store, `external_server(config)` and `profile_server(config)` also wire in the external-identity stores or the profile and organization stores, and `make_auth()` returns a ready `ZAuth` with the test configuration. The request helpers are `ctx(ip)`, a `ClientContext` with a test user agent, `register_request(email, username)`, `credentials(email)`, `register(&auth, email)`, `register_and_login(&auth, email, ip)` and `new_role(name)`, and the constants are `VALID_PASSWORD`, `ISSUER`, `IP_A` and `IP_B`.
 
 Three features add the extension ports. `shared` adds the in-memory node registry for z-auth-cluster's shared mode, `federation` (which implies `shared`) adds the federation sync store, and `mfa` adds the in-memory z-auth-mfa store together with the `mfa` module, which provides fixed test keys, a `RecordingCodeSender` that records codes instead of sending them, `mfa_server(..)` and `mfa_server_with(..)` to build a server with the extension wired in, and `totp_code(..)` to compute a TOTP code at the mock clock's time.
 
@@ -77,7 +77,7 @@ The PostgreSQL adapter's tests talk to a real database. Their helper reads the c
 
 ```sh
 export DB_HOST=localhost DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=auth
-cargo run -p z-auth-postgres --features shared,mfa,external-identity --bin setup_db -- --cluster --mfa --external
+cargo run -p z-auth-postgres --features shared,mfa,external-identity,profile --bin setup_db -- --cluster --mfa --external --profile
 cargo test -p z-auth-postgres --all-features
 ```
 
@@ -85,7 +85,7 @@ The helpers are idempotent and safe to run in any order with several test thread
 
 ## Feature combinations
 
-Each crate has optional features (the core has `argon2`, `crypto` and `serde`, z-auth-cluster `shared` and `federation`, z-auth-mfa `aead`, z-auth-mfa-sender `smtp`, `sendgrid`, `postmark`, `mailgun`, `twilio` and `webhook`, z-auth-postgres `shared`, `federation`, `mfa` and `external-identity`, z-auth-sso `oidc` and `github`), and every combination must compile. CI checks this with cargo-hack, which builds every crate with each feature on its own as well as with no default features, without dev-dependencies. Run the same check locally before changing feature gates.
+Each crate has optional features (the core has `argon2`, `crypto` and `serde`, z-auth-cluster `shared` and `federation`, z-auth-mfa `aead`, z-auth-mfa-sender `smtp`, `sendgrid`, `postmark`, `mailgun`, `twilio` and `webhook`, z-auth-postgres `shared`, `federation`, `mfa`, `external-identity` and `profile`, z-auth-sso `oidc` and `github`), and every combination must compile. CI checks this with cargo-hack, which builds every crate with each feature on its own as well as with no default features, without dev-dependencies. Run the same check locally before changing feature gates.
 
 ```sh
 cargo install cargo-hack
@@ -114,7 +114,7 @@ flowchart LR
     audit --> summary
 ```
 
-The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`. The test job runs the database-free suites with the command shown above. The PostgreSQL job starts a `postgres:16` service, runs `setup_db` with the `shared`, `mfa` and `external-identity` features and the `--cluster --mfa --external` flags, and then runs `cargo test -p z-auth-postgres --all-features`. The features job runs the cargo-hack check. The docs job builds `cargo doc --workspace --all-features --no-deps` with rustdoc warnings denied, so broken intra-doc links fail the build. The audit job generates a lockfile and runs `cargo audit`, honouring the ignore list in `.cargo/audit.toml`, which currently ignores one advisory for the `rsa` crate, a timing side channel in private-key operations, reachable through an sqlx MySQL dependency the workspace never enables and through z-auth-sso's `jsonwebtoken`, which only verifies signatures with public keys. The summary job writes a table of the results into the run summary and fails if any job failed or was cancelled.
+The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`. The test job runs the database-free suites with the command shown above. The PostgreSQL job starts a `postgres:16` service, runs `setup_db` with the `shared`, `mfa`, `external-identity` and `profile` features and the `--cluster --mfa --external --profile` flags, and then runs `cargo test -p z-auth-postgres --all-features`. The features job runs the cargo-hack check. The docs job builds `cargo doc --workspace --all-features --no-deps` with rustdoc warnings denied, so broken intra-doc links fail the build. The audit job generates a lockfile and runs `cargo audit`, honouring the ignore list in `.cargo/audit.toml`, which currently ignores one advisory for the `rsa` crate, a timing side channel in private-key operations, reachable through an sqlx MySQL dependency the workspace never enables and through z-auth-sso's `jsonwebtoken`, which only verifies signatures with public keys. The summary job writes a table of the results into the run summary and fails if any job failed or was cancelled.
 
 ## Releases
 
@@ -123,6 +123,6 @@ The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy
 To cut a release, bump `version` in the root `Cargo.toml`, which is the version the workflow checks (the adapter crates and the testkit currently carry the same version, and keeping them in step avoids confusion), merge, then tag the merge commit and push the tag.
 
 ```sh
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.5.0
+git push origin v0.5.0
 ```

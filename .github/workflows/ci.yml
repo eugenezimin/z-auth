@@ -73,10 +73,10 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # Creates the database and applies the core, cluster, mfa and
-      # external-identity migrations.
+      # Creates the database and applies the core, cluster, mfa,
+      # external-identity and profile migrations.
       - name: setup_db
-        run: cargo run -p z-auth-postgres --features shared,mfa,external-identity --bin setup_db -- --cluster --mfa --external
+        run: cargo run -p z-auth-postgres --features shared,mfa,external-identity,profile --bin setup_db -- --cluster --mfa --external --profile
       - run: cargo test -p z-auth-postgres --all-features
 
   features:

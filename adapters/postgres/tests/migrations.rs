@@ -91,6 +91,56 @@ async fn test_mfa_migrations_apply_on_top_of_the_core_set() {
     );
 }
 
+/// The profile set lives beside the others (versions from 4001); each
+/// migrator leaves the other sets' versions alone.
+#[cfg(feature = "profile")]
+#[tokio::test]
+async fn test_profile_migrations_apply_on_top_of_the_core_set() {
+    use z_auth_postgres::{PROFILE_MIGRATOR, run_profile_migrations};
+
+    let pool = pool().await;
+    run_profile_migrations(&pool)
+        .await
+        .expect("profile set applies");
+    run_profile_migrations(&pool)
+        .await
+        .expect("and is idempotent");
+    run_migrations(&pool)
+        .await
+        .expect("the core migrator ignores profile versions");
+
+    let versions: Vec<i64> = sqlx::query_scalar(
+        "SELECT version FROM _sqlx_migrations
+         WHERE success AND version BETWEEN 4000 AND 4999 ORDER BY version",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let embedded: Vec<i64> = PROFILE_MIGRATOR.iter().map(|m| m.version).collect();
+    assert_eq!(versions, embedded);
+    assert!(embedded.iter().all(|v| (4000..5000).contains(v)));
+
+    let mut tables: Vec<String> = sqlx::query_scalar(
+        "SELECT tablename::text FROM pg_tables
+         WHERE schemaname = current_schema()
+           AND (tablename LIKE 'identity\\_user\\_%' OR tablename LIKE 'identity\\_organization%')",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    tables.sort();
+    assert_eq!(
+        tables,
+        [
+            "identity_organization_departments",
+            "identity_organization_memberships",
+            "identity_organizations",
+            "identity_user_addresses",
+            "identity_user_phones",
+        ]
+    );
+}
+
 #[tokio::test]
 async fn test_enum_types_exist() {
     let pool = pool().await;

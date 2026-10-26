@@ -110,6 +110,21 @@ pub fn external_server(config: AuthConfig) -> Server {
     Server { auth, db, clock }
 }
 
+/// Like [`server`], with users' profiles and the organization catalog
+/// enabled (in the same store).
+pub fn profile_server(config: AuthConfig) -> Server {
+    let clock = MockClock::new();
+    let db = Arc::new(InMemoryDb::new(clock.clone()));
+    let auth = ZAuth::builder(config, repositories(&db))
+        .permissions(db.clone())
+        .profiles(db.clone())
+        .organizations(db.clone())
+        .clock(clock.clone())
+        .build()
+        .expect("ZAuth must build with all adapters supplied");
+    Server { auth, db, clock }
+}
+
 /// A fully wired [`ZAuth`] backed by a fresh in-memory store.
 pub fn make_auth() -> ZAuth {
     server(test_config()).auth

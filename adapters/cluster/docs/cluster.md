@@ -102,7 +102,7 @@ A heartbeat envelope looks like the following on the wire when the transport use
         "ip": "10.0.0.5",
         "dns_name": null,
         "port": 7000,
-        "version": "0.3.0",
+        "version": "0.5.0",
         "started_at": "2026-10-16T09:12:40.001Z"
       },
       "state": "active",
