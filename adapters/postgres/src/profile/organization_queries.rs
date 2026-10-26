@@ -110,8 +110,17 @@ pub const LIST_MEMBERS: &str = concat!(
 pub const COUNT_MEMBERS: &str = "SELECT count(*) FROM identity_organization_memberships \
      WHERE organization_id = $1 AND ($2::uuid IS NULL OR department_id = $2)";
 
+/// A user's membership by id.
+pub const FIND_MEMBERSHIP: &str = concat!(
+    "WITH m AS (SELECT * FROM identity_organization_memberships \
+                WHERE id = $1 AND user_id = $2) ",
+    membership_select!()
+);
+
+/// Clears the user's primary membership, except `$2` when it is not NULL.
 pub const CLEAR_PRIMARY_MEMBERSHIP: &str = "UPDATE identity_organization_memberships \
-     SET is_primary = false, updated_at = now() WHERE user_id = $1 AND is_primary";
+     SET is_primary = false, updated_at = now() \
+     WHERE user_id = $1 AND is_primary AND ($2::uuid IS NULL OR id <> $2)";
 
 pub const INSERT_MEMBERSHIP: &str = concat!(
     "WITH m AS (INSERT INTO identity_organization_memberships \
@@ -120,14 +129,16 @@ pub const INSERT_MEMBERSHIP: &str = concat!(
     membership_select!()
 );
 
-/// `$6 = false` keeps the membership's primary flag.
+/// Every field but the primary flag.
 pub const UPDATE_MEMBERSHIP: &str = concat!(
     "WITH m AS (UPDATE identity_organization_memberships \
-                SET organization_id = $3, department_id = $4, title = $5, \
-                    is_primary = is_primary OR $6, updated_at = now() \
+                SET organization_id = $3, department_id = $4, title = $5, updated_at = now() \
                 WHERE id = $1 AND user_id = $2 RETURNING *) ",
     membership_select!()
 );
+
+pub const MEMBERSHIP_EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM identity_organization_memberships \
+     WHERE id = $1 AND user_id = $2)";
 
 pub const SET_PRIMARY_MEMBERSHIP: &str = "UPDATE identity_organization_memberships \
      SET is_primary = true, updated_at = now() WHERE id = $1 AND user_id = $2";

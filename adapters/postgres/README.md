@@ -21,7 +21,7 @@ Everything a host needs is re-exported from the crate root, except `connect_opti
 | `MFA_MIGRATOR`, `run_mfa_migrations(&pool)` | static, async function | `mfa` | The mfa set in `migrations_mfa/`; the function applies the core set first |
 | `EXTERNAL_MIGRATOR`, `run_external_migrations(&pool)` | static, async function | `external-identity` | The external-identity set in `migrations_external/`; the function applies the core set first |
 | `PROFILE_MIGRATOR`, `run_profile_migrations(&pool)` | static, async function | `profile` | The profile set in `migrations_profile/` (PostgreSQL 15 or later); the function applies the core set first |
-| `tx` | module | none | Every repository statement as a free function over `&mut PgConnection` (`tx::users`, `tx::roles`, `tx::user_roles`, `tx::permissions`, `tx::revocations`, `tx::keys`, `tx::sessions`), so a host can change z-auth state and its own tables in one transaction. Adds `users::create_with_id`, `users::set_verified` and `roles::create_with_id`, which have no port method |
+| `tx` | module | none | Every repository statement as a free function over `&mut PgConnection` (`tx::users`, `tx::roles`, `tx::user_roles`, `tx::permissions`, `tx::revocations`, `tx::keys`, `tx::sessions`, and with the `profile` feature `tx::profiles` and `tx::organizations`), so a host can change z-auth state and its own tables in one transaction. Adds `users::create_with_id`, `users::set_verified` and `roles::create_with_id`, which have no port method |
 
 The repository types each wrap a `PgPool` and are built with `new(pool)`. Every one of them implements exactly one port.
 
@@ -54,7 +54,7 @@ sqlx::query("INSERT INTO outbox (...) VALUES (...)").execute(&mut *tx).await?;
 tx.commit().await?;
 ```
 
-Functions documented as running several statements (`permissions::create`, `permissions::replace_*_grant`, `permissions::load_catalog`, `sessions::create`, `sessions::rotate`) must run inside a transaction. Queries are unqualified, so the connection's `search_path` selects the schema. Writes made this way bypass z-auth's services: the host is responsible for what those services would otherwise do, such as ending sessions and recording a revocation when it deactivates a user, and for keeping the in-memory denylist, key ring and catalog of running instances current.
+Functions documented as running several statements (`permissions::create`, `permissions::replace_*_grant`, `permissions::load_catalog`, `sessions::create`, `sessions::rotate`, and the profile writes that may change a user's primary phone, address or membership, such as `profiles::add_phone` and `organizations::set_primary_membership`) must run inside a transaction. Queries are unqualified, so the connection's `search_path` selects the schema. Writes made this way bypass z-auth's services: the host is responsible for what those services would otherwise do, such as ending sessions and recording a revocation when it deactivates a user, and for keeping the in-memory denylist, key ring and catalog of running instances current.
 
 `PgPermissionRepository` is not part of `repositories(&pool)` because the core treats it as optional. The same holds for `PgExternalIdentityRepository` and `PgFlowStateRepository`, which are passed together with `.external_identities(...)` when the host signs users in through external identity providers, and for `PgProfileRepository` and `PgOrganizationRepository`, which are passed with `.profiles(...)` and `.organizations(...)` when users may keep phones, addresses and organization memberships. It is passed to the builder with `.permissions(...)` and is required when `AUTH_AUTHZ_MODE` is `permissions` or `combined`. `PgSyncStore` also has an inherent `next_account_version()` method that draws the next account-snapshot version on the authority.
 
@@ -292,7 +292,7 @@ async fn build_with_profiles() -> Result<ZAuth, Box<dyn std::error::Error>> {
 }
 ```
 
-Every write that can change a user's primary phone, address or membership runs in one transaction that first locks the user's row with `SELECT ... FOR NO KEY UPDATE`, so concurrent changes for one user wait for each other instead of tripping the partial unique index that allows one primary item per user. The lock does not conflict with the `KEY SHARE` locks that foreign keys take, so it never blocks inserts that merely reference the user. None of the profile tables is in the cluster change feed, and the [user profiles guide](../../docs/user-profile.md) describes the rules the tables serve.
+Every write that can change a user's primary phone, address or membership runs in one transaction that first locks the user's row with `SELECT ... FOR NO KEY UPDATE`, held until the transaction ends, so concurrent changes for one user wait for each other instead of tripping the partial unique index that allows one primary item per user. The lock does not conflict with the `KEY SHARE` locks that foreign keys take, so it never blocks inserts that merely reference the user. Such a write that does not find its item changes nothing, so it is safe inside a host transaction that commits anyway. The statements are also available as `tx::profiles` and `tx::organizations`, for a host that writes a profile change and its own rows in one transaction. None of the profile tables is in the cluster change feed, and the [user profiles guide](../../docs/user-profile.md) describes the rules the tables serve.
 
 ## Configuration
 
@@ -436,8 +436,7 @@ adapters/postgres/
 │   ├── external/                   feature external-identity
 │   │   ├── external_repository.rs  PgExternalIdentityRepository, PgFlowStateRepository
 │   │   └── external_queries.rs
-│   ├── profile/                    feature profile
-│   │   ├── mod.rs                  the per-user transaction helpers
+│   ├── profile/                    feature profile; statements in tx/profiles.rs and tx/organizations.rs
 │   │   ├── profile_repository.rs   PgProfileRepository
 │   │   ├── profile_queries.rs
 │   │   ├── organization_repository.rs  PgOrganizationRepository
@@ -473,7 +472,7 @@ The plain run covers the core repositories. Six test binaries declare `required-
 | `federation` | `federation` | Login at an authority, refresh and logout at a session store |
 | `mfa` | `mfa` | `PgMfaRepository` end to end with the built-in sealer |
 | `external_identity` | `external-identity` | Identity round trips, one owner per `(issuer, subject)`, deletion with the user, single-use and expiring flow states, and a sign-in linked through the password |
-| `profile` | `profile` | Phone, address, organization, department and membership round trips, constraint-to-error mapping, per-user scoping, concurrent primary changes, and the deletion cascades |
+| `profile` | `profile` | Phone, address, organization, department and membership round trips, constraint-to-error mapping, per-user scoping, concurrent primary changes, the deletion cascades, and `tx::profiles` / `tx::organizations` committing or rolling back with the host's transaction |
 
 All tests use unique names and can run in parallel against one database. The `sync` and `federation` tests create the `cluster_sync_site` row in the test database, which switches change capture on there for good; the session-store schemas they create are dropped at the end of each test, but an interrupted run can leave one behind.
 

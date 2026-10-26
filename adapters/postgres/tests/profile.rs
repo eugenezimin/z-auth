@@ -19,11 +19,12 @@ use z_auth::identity::organization::{
 use z_auth::identity::profile::{
     AddressInput, NewAddress, NewPhone, PhoneInput, ProfileRepository,
 };
+use z_auth::identity::user::NewUser;
 use z_auth::identity::user::RegisterUser;
 use z_auth::security::token::keys::{generate_refresh_secret, generate_signing_key};
 use z_auth_postgres::{
     PgOrganizationRepository, PgPermissionRepository, PgProfileRepository, repositories,
-    run_profile_migrations,
+    run_profile_migrations, tx,
 };
 
 use crate::helpers::{cleanup_user_by_id, create_test_user, pool, unique_email, unique_name};
@@ -624,4 +625,143 @@ async fn test_memberships() {
     orgs.delete(globex.id).await.unwrap();
     cleanup_user_by_id(&s.auth, alice).await.unwrap();
     cleanup_user_by_id(&s.auth, bob).await.unwrap();
+}
+
+// ── In the host's transaction (tx::profiles, tx::organizations) ───────────────
+
+fn new_user(email: &str) -> NewUser {
+    NewUser {
+        email: email.to_string(),
+        password_hash: None,
+        username: None,
+        first_name: None,
+        last_name: None,
+        is_verified: false,
+    }
+}
+
+#[tokio::test]
+async fn test_rolled_back_transaction_leaves_no_profile() {
+    let s = setup().await;
+    let pool = pool().await;
+    let email = unique_email("tx_profile_rollback");
+    let org_name = unique_name("Rollback Co");
+
+    let mut t = pool.begin().await.unwrap();
+    let user = tx::users::create(&mut t, &new_user(&email)).await.unwrap();
+    let phone = tx::profiles::add_phone(&mut t, user.id, &new_phone("+15551234567", true))
+        .await
+        .unwrap();
+    let org = tx::organizations::create_organization(&mut t, &org(&org_name))
+        .await
+        .unwrap();
+    tx::organizations::add_membership(&mut t, user.id, &membership(org.id, None))
+        .await
+        .unwrap();
+    // Visible inside the transaction.
+    assert_eq!(
+        tx::profiles::list_phones(&mut t, user.id).await.unwrap(),
+        [phone]
+    );
+    t.rollback().await.unwrap();
+
+    let mut c = pool.acquire().await.unwrap();
+    assert!(
+        tx::users::find_by_email(&mut c, &email)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(s.profiles.list_phones(user.id).await.unwrap().is_empty());
+    assert!(
+        tx::organizations::find_organization(&mut c, org.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn test_committed_transaction_includes_host_statements() {
+    let s = setup().await;
+    let pool = pool().await;
+    let alice = user(&s, "tx_profile_commit").await;
+
+    let mut t = pool.begin().await.unwrap();
+    let home = tx::profiles::add_address(
+        &mut t,
+        alice,
+        &NewAddress {
+            label: "home".into(),
+            line1: "1 Main St".into(),
+            line2: None,
+            locality: None,
+            region: None,
+            postal_code: None,
+            country_code: "US".into(),
+            is_primary: true,
+        },
+    )
+    .await
+    .unwrap();
+    // A host statement in the same transaction.
+    let (echo,): (Uuid,) =
+        sqlx::query_as("SELECT user_id FROM identity_user_addresses WHERE id = $1")
+            .bind(home.id)
+            .fetch_one(&mut *t)
+            .await
+            .unwrap();
+    assert_eq!(echo, alice);
+    t.commit().await.unwrap();
+
+    assert_eq!(s.profiles.list_addresses(alice).await.unwrap(), [home]);
+    cleanup_user_by_id(&s.auth, alice).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_not_found_changes_nothing_inside_a_transaction() {
+    let s = setup().await;
+    let pool = pool().await;
+    let alice = user(&s, "tx_profile_noop").await;
+    let primary = s
+        .profiles
+        .add_phone(alice, new_phone("+15551234567", true))
+        .await
+        .unwrap();
+
+    let mut t = pool.begin().await.unwrap();
+    // Neither call finds its phone, so the primary must survive even
+    // though the transaction commits.
+    assert!(
+        tx::profiles::replace_phone(
+            &mut t,
+            alice,
+            Uuid::new_v4(),
+            &new_phone("+15550000000", true)
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    assert!(
+        !tx::profiles::set_primary_phone(&mut t, alice, Uuid::new_v4())
+            .await
+            .unwrap()
+    );
+    t.commit().await.unwrap();
+    assert_eq!(
+        s.profiles.list_phones(alice).await.unwrap(),
+        std::slice::from_ref(&primary)
+    );
+
+    let mut t = pool.begin().await.unwrap();
+    // Unique violations still map to domain errors.
+    let err = tx::profiles::add_phone(&mut t, alice, &new_phone("+15551234567", false))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AuthError::PhoneAlreadyAdded), "{err:?}");
+    t.rollback().await.unwrap();
+
+    assert_eq!(s.profiles.list_phones(alice).await.unwrap(), [primary]);
+    cleanup_user_by_id(&s.auth, alice).await.unwrap();
 }
