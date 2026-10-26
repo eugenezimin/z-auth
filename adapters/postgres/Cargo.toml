@@ -16,6 +16,9 @@ mfa = ["dep:z-auth-mfa"]
 # External sign-in and account linking: linked identities, flow states and
 # their migration set.
 external-identity = []
+# Users' phones and addresses, the organization catalog and memberships,
+# and their migration set.
+profile = []
 
 [[bin]]
 name = "setup_db"
@@ -56,3 +59,7 @@ required-features = ["mfa"]
 [[test]]
 name = "external_identity"
 required-features = ["external-identity"]
+
+[[test]]
+name = "profile"
+required-features = ["profile"]
