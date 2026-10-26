@@ -123,6 +123,6 @@ The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy
 To cut a release, bump `version` in the root `Cargo.toml`, which is the version the workflow checks (the adapter crates and the testkit currently carry the same version, and keeping them in step avoids confusion), merge, then tag the merge commit and push the tag.
 
 ```sh
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.5.0
+git push origin v0.5.0
 ```

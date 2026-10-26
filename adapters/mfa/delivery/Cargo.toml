@@ -1,6 +1,6 @@
 [package]
 name = "z-auth-mfa-sender"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Subcrate of z-auth-mfa that delivers its email and SMS codes over SMTP, SendGrid, Postmark, Mailgun, Twilio or a signed webhook"
@@ -21,8 +21,8 @@ webhook = ["http", "dep:hmac", "dep:sha2", "dep:hex"]
 http = ["dep:reqwest"]
 
 [dependencies]
-z-auth      = { path = "../../..", version = "0.4.0", default-features = false }
-z-auth-mfa  = { path = "..", version = "0.4.0", default-features = false }
+z-auth      = { path = "../../..", version = "0.5.0", default-features = false }
+z-auth-mfa  = { path = "..", version = "0.5.0", default-features = false }
 async-trait = "0.1.89"
 chrono      = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde_json  = "1"

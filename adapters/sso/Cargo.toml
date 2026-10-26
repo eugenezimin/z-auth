@@ -1,6 +1,6 @@
 [package]
 name = "z-auth-sso"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Single sign-on for z-auth: OpenID Connect and OAuth2 identity providers (Google, LinkedIn, Okta, Entra ID, GitHub, …)"
@@ -15,7 +15,7 @@ oidc = ["dep:jsonwebtoken"]
 github = []
 
 [dependencies]
-z-auth       = { path = "../..", version = "0.4.0", default-features = false, features = ["crypto", "serde"] }
+z-auth       = { path = "../..", version = "0.5.0", default-features = false, features = ["crypto", "serde"] }
 async-trait  = "0.1.89"
 base64       = "0.23"
 chrono       = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
