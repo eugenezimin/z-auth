@@ -1,7 +1,8 @@
 [package]
 name = "z-auth-mfa"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Two-factor authentication for z-auth: TOTP, recovery codes, email and SMS codes"
 
 [features]
@@ -11,7 +12,7 @@ default = ["aead"]
 aead = ["dep:chacha20poly1305"]
 
 [dependencies]
-z-auth      = { path = "../..", default-features = false, features = ["crypto", "serde"] }
+z-auth      = { path = "../..", version = "0.4.0", default-features = false, features = ["crypto", "serde"] }
 async-trait = "0.1.89"
 uuid        = { version = "1", features = ["v4", "serde"] }
 chrono      = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }

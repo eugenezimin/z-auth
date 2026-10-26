@@ -1,16 +1,16 @@
 //! PostgreSQL implementation of [`UserRoleRepository`] using `sqlx`.
 //!
-//! All SQL lives in [`crate::queries::user_role_queries`].
+//! The statements live in [`crate::tx::user_roles`].
 
 use async_trait::async_trait;
 use sqlx::PgPool;
+use sqlx::pool::PoolConnection;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::access::{UserRole, UserRoleRepository};
 
 use crate::errors::map_sqlx_error;
-use crate::queries::user_role_queries;
-use crate::rows::UserRoleRow;
+use crate::tx::user_roles;
 
 /// PostgreSQL-backed user → role assignment repository.
 pub struct PgUserRoleRepository {
@@ -22,74 +22,38 @@ impl PgUserRoleRepository {
         Self { pool }
     }
 
-    async fn list(&self, sql: &str, user_id: Uuid) -> Result<Vec<UserRole>, AuthError> {
-        let rows: Vec<UserRoleRow> = sqlx::query_as(sql)
-            .bind(user_id)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(rows.into_iter().map(Into::into).collect())
+    async fn conn(&self) -> Result<PoolConnection<sqlx::Postgres>, AuthError> {
+        self.pool.acquire().await.map_err(map_sqlx_error)
     }
 }
 
 #[async_trait]
 impl UserRoleRepository for PgUserRoleRepository {
     async fn assign(&self, user_id: Uuid, role_id: Uuid) -> Result<bool, AuthError> {
-        // `ON CONFLICT DO NOTHING` → no row returned when the user already
-        // holds the role actively (partial unique index).
-        let row: Option<UserRoleRow> = sqlx::query_as(user_role_queries::INSERT_USER_ROLE)
-            .bind(user_id)
-            .bind(role_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(row.is_some())
+        user_roles::assign(&mut *self.conn().await?, user_id, role_id).await
     }
 
     async fn revoke(&self, user_id: Uuid, role_id: Uuid) -> Result<bool, AuthError> {
-        let row: Option<UserRoleRow> = sqlx::query_as(user_role_queries::REVOKE_USER_ROLE)
-            .bind(user_id)
-            .bind(role_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(row.is_some())
+        user_roles::revoke(&mut *self.conn().await?, user_id, role_id).await
     }
 
     async fn is_role_active(&self, user_id: Uuid, role_id: Uuid) -> Result<bool, AuthError> {
-        let (exists,): (bool,) = sqlx::query_as(user_role_queries::IS_ROLE_ACTIVE)
-            .bind(user_id)
-            .bind(role_id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(exists)
+        user_roles::is_role_active(&mut *self.conn().await?, user_id, role_id).await
     }
 
     async fn list_active_for_user(&self, user_id: Uuid) -> Result<Vec<UserRole>, AuthError> {
-        self.list(user_role_queries::LIST_ACTIVE_FOR_USER, user_id)
-            .await
+        user_roles::list_active_for_user(&mut *self.conn().await?, user_id).await
     }
 
     async fn list_all_for_user(&self, user_id: Uuid) -> Result<Vec<UserRole>, AuthError> {
-        self.list(user_role_queries::LIST_ALL_FOR_USER, user_id)
-            .await
+        user_roles::list_all_for_user(&mut *self.conn().await?, user_id).await
     }
 
     async fn revoke_all_for_user(&self, user_id: Uuid) -> Result<u64, AuthError> {
-        let result = sqlx::query(user_role_queries::REVOKE_ALL_FOR_USER)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(result.rows_affected())
+        user_roles::revoke_all_for_user(&mut *self.conn().await?, user_id).await
     }
 
     async fn list_active_holders(&self, role_id: Uuid) -> Result<Vec<Uuid>, AuthError> {
-        sqlx::query_scalar(user_role_queries::LIST_ACTIVE_HOLDERS)
-            .bind(role_id)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_sqlx_error)
+        user_roles::list_active_holders(&mut *self.conn().await?, role_id).await
     }
 }

@@ -8,6 +8,13 @@ pub const INSERT_ROLE: &str = r#"
     RETURNING id, code, name, description, created_at
 "#;
 
+/// [`INSERT_ROLE`] with a caller-chosen id (`$1`).
+pub const INSERT_ROLE_WITH_ID: &str = r#"
+    INSERT INTO identity_roles (id, code, name, description)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id, code, name, description, created_at
+"#;
+
 pub const FIND_ROLE_BY_ID: &str = r#"
     SELECT id, code, name, description, created_at
     FROM identity_roles

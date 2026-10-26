@@ -356,4 +356,6 @@ let claims = verifier.verify(bearer)?;
 let admin = authorizer.has_role(&claims, "billing_admin");
 ```
 
+`verify` fails with `TokenExpired` when the token is past its expiry plus the leeway, so a client can tell "refresh and retry" from `InvalidToken` (malformed, wrongly signed, unknown key) and `TokenRevoked` (denylisted).
+
 Such a verifier only refuses what its own denylist contains, and nothing fills that denylist by itself. Either feed it (for example by applying the `Revocation` values carried by `DomainEvent::Revoked` from a message bus with `Denylist::apply`) or accept that revoked tokens stay valid there until they expire, which is at most the access TTL plus the leeway. Services that run a full `ZAuth` with z-auth-cluster have their denylist and key ring kept current by the cluster instead.

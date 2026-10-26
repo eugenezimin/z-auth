@@ -20,4 +20,14 @@ pub trait PasswordHasher: Send + Sync {
     /// `Ok(false)` means "wrong password"; `Err` means the stored hash is
     /// malformed or verification failed for another reason.
     fn verify(&self, plaintext: &str, stored_hash: &str) -> Result<bool, AuthError>;
+
+    /// Spend the time of one [`verify`](Self::verify) without a stored hash.
+    ///
+    /// Login calls this when the email is unknown or the account has no
+    /// password, so response time does not reveal which emails are
+    /// registered.  The default does nothing; slow hashers should override
+    /// it with a verification against a fixed hash of the same parameters.
+    fn verify_dummy(&self, plaintext: &str) {
+        let _ = plaintext;
+    }
 }

@@ -59,6 +59,7 @@ impl From<AuthError> for ApiError {
             UserNotFound => Self::client(HTTP_NOT_FOUND, "user_not_found", &err),
             InvalidCredentials => Self::client(HTTP_UNAUTHORIZED, "invalid_credentials", &err),
             InvalidToken(_) => Self::client(HTTP_UNAUTHORIZED, "invalid_token", &err),
+            TokenExpired => Self::client(HTTP_UNAUTHORIZED, "token_expired", &err),
             TokenRevoked => Self::client(HTTP_UNAUTHORIZED, "token_revoked", &err),
             SessionExpired => Self::client(HTTP_UNAUTHORIZED, "session_expired", &err),
             SessionCompromised => Self::client(HTTP_UNAUTHORIZED, "session_compromised", &err),
