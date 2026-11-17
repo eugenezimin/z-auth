@@ -7,9 +7,7 @@
 
 use argon2::{
     Argon2,
-    password_hash::{
-        PasswordHash, PasswordHasher as _, PasswordVerifier, SaltString, rand_core::OsRng,
-    },
+    password_hash::{PasswordHasher as _, PasswordVerifier, phc::PasswordHash},
 };
 
 use std::sync::OnceLock;
@@ -22,13 +20,11 @@ use crate::utils::error::AuthError;
 pub struct Argon2Hasher;
 
 impl PasswordHasher for Argon2Hasher {
-    /// Generates a fresh random salt on every call, so two calls with the same
-    /// password produce different hashes.
+    /// Generates a fresh random salt from the OS on every call, so two calls
+    /// with the same password produce different hashes.
     fn hash(&self, plaintext: &str) -> Result<String, AuthError> {
-        let salt = SaltString::generate(&mut OsRng);
-
         Argon2::default()
-            .hash_password(plaintext.as_bytes(), &salt)
+            .hash_password(plaintext.as_bytes())
             .map(|hash| hash.to_string())
             .map_err(|e| AuthError::HashingError(e.to_string()))
     }
@@ -39,7 +35,7 @@ impl PasswordHasher for Argon2Hasher {
 
         match Argon2::default().verify_password(plaintext.as_bytes(), &parsed) {
             Ok(()) => Ok(true),
-            Err(argon2::password_hash::Error::Password) => Ok(false),
+            Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
             Err(e) => Err(AuthError::HashingError(e.to_string())),
         }
     }

@@ -24,7 +24,7 @@ uuid        = { version = "1", features = ["v4", "v5"] }
 chrono      = { version = "0.4", default-features = false, features = ["clock", "std"] }
 getrandom   = "0.4"
 base64      = "0.23"
-argon2      = { version = "0.5", features = ["std"], optional = true }
+argon2      = { version = "0.6", optional = true }
 serde       = { version = "1", features = ["derive"], optional = true }
 serde_json  = { version = "1", optional = true }
 ed25519-dalek = { version = "3", optional = true }
