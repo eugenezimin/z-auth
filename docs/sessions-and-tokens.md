@@ -306,6 +306,7 @@ The rule behind this is that a token whose session was revoked should never be p
 | `RevokedTokenUsed` | `tick` enforcing a revocation whose token was presented | `Compromised` |
 | `ConcurrentRefresh` | z-auth-cluster federation mode, the losing token of a benign fork | `Revoked` |
 | `SecondFactorChanged` | z-auth-mfa, when a user's factors are added, removed or reset | `Revoked` |
+| `AccountChanged` | a host ending a user's sessions because someone else changed the account, its roles, permissions or placement | `Revoked` |
 
 The account changes deserve emphasis. Changing the password through `UserService::update` first stores the new hash and then ends every session of the user, including the caller's, so every surviving session would predate the change. Deactivating ends every session as well, and deleting publishes a user-wide revocation for the access tokens already issued while the store's cascade removes the session rows. A profile update without a password change leaves sessions alone.
 

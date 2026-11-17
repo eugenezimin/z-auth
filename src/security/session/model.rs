@@ -46,6 +46,9 @@ pub enum RevocationReason {
     ConcurrentRefresh,
     /// The user's second factors changed (one added, removed or reset).
     SecondFactorChanged,
+    /// The user's account, roles, permissions or placement were changed by
+    /// someone else: the user signs in again to carry the change.
+    AccountChanged,
 }
 
 /// Lifecycle state of a session.

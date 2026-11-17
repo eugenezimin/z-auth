@@ -436,6 +436,7 @@ async fn test_every_revocation_reason_round_trips_through_the_enum() {
         RevocationReason::RevokedTokenUsed,
         RevocationReason::ConcurrentRefresh,
         RevocationReason::SecondFactorChanged,
+        RevocationReason::AccountChanged,
     ];
     let ttl = Duration::from_secs(60);
 
