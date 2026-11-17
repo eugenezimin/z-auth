@@ -66,6 +66,7 @@ fn reason_rank(r: RevocationReason) -> u8 {
         RevokedTokenUsed => 10,
         ConcurrentRefresh => 11,
         SecondFactorChanged => 12,
+        AccountChanged => 13,
     }
 }
 
