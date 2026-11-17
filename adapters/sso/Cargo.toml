@@ -26,7 +26,7 @@ sha2         = "0.11"
 uuid         = { version = "1", features = ["v4", "serde"] }
 # rustls with the platform's certificate store.
 reqwest      = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
-jsonwebtoken = { version = "11", optional = true, default-features = false, features = ["rust_crypto"] }
+jsonwebtoken = { version = "12", optional = true, default-features = false, features = ["rust_crypto"] }
 
 [dev-dependencies]
 z-auth         = { path = "../..", features = ["argon2", "crypto", "serde", "yaml"] }
@@ -34,4 +34,4 @@ z-auth-testkit = { path = "../../testkit" }
 tokio          = { version = "1", features = ["macros", "rt-multi-thread"] }
 wiremock       = "0.6"
 # Signs the test ID tokens.
-jsonwebtoken   = { version = "11", default-features = false, features = ["rust_crypto", "use_pem"] }
+jsonwebtoken   = { version = "12", default-features = false, features = ["rust_crypto", "use_pem"] }
