@@ -53,3 +53,37 @@ impl PasswordHasher for Argon2Hasher {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Made by argon2 0.5.3 with `Argon2::default()`, the hasher z-auth used
+    /// up to 0.7.0. Passwords stored back then must keep verifying.
+    const HASH_FROM_ARGON2_0_5: &str = "$argon2id$v=19$m=19456,t=2,p=1$\
+         tDH8UNGINvU8/fdZVIzBJQ$jrv8CNF4Eyti56g7uyOpra0aXnkIKdisxDab3ve2pBk";
+
+    #[test]
+    fn verifies_hashes_stored_by_earlier_releases() {
+        let hasher = Argon2Hasher;
+        assert!(matches!(
+            hasher.verify("correct horse battery staple", HASH_FROM_ARGON2_0_5),
+            Ok(true)
+        ));
+        assert!(matches!(
+            hasher.verify("wrong horse battery staple", HASH_FROM_ARGON2_0_5),
+            Ok(false)
+        ));
+    }
+
+    #[test]
+    fn hashes_in_the_same_format() {
+        let hasher = Argon2Hasher;
+        let hash = hasher.hash("pw").unwrap_or_default();
+        assert!(
+            hash.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"),
+            "{hash}"
+        );
+        assert!(matches!(hasher.verify("pw", &hash), Ok(true)));
+    }
+}
