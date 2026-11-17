@@ -156,7 +156,7 @@ async fn test_feed_orders_transaction_ids_numerically() {
     assert_eq!(page.next, FeedCursor { txid: 10, seq: 2 });
     assert!(!page.more);
 
-    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP SCHEMA {schema} CASCADE")))
         .execute(&pool().await)
         .await
         .unwrap();
@@ -371,7 +371,7 @@ async fn test_session_round_trip_cas_and_session_store_schema() {
         ApplyOutcome::Dropped
     );
 
-    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP SCHEMA {schema} CASCADE")))
         .execute(&pool)
         .await
         .unwrap();

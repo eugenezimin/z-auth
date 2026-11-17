@@ -94,7 +94,7 @@ pub(crate) async fn lock_user(conn: &mut PgConnection, user_id: Uuid) -> Result<
 /// `except`.
 pub(crate) async fn clear_primary(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     user_id: Uuid,
     except: Option<Uuid>,
 ) -> Result<(), AuthError> {
@@ -110,7 +110,7 @@ pub(crate) async fn clear_primary(
 /// Run an `*_EXISTS` statement for item `id` of the user.
 pub(crate) async fn item_exists(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, AuthError> {
@@ -126,7 +126,7 @@ pub(crate) async fn item_exists(
 /// Run a `DELETE_*` statement for item `id` of the user.
 pub(crate) async fn delete_item(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     id: Uuid,
     user_id: Uuid,
 ) -> Result<bool, AuthError> {

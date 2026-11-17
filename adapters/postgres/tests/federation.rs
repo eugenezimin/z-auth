@@ -264,7 +264,7 @@ async fn test_login_at_the_authority_refresh_and_logout_at_a_session_store() {
     ums.shutdown().await.unwrap();
     orders.shutdown().await.unwrap();
     let _ = ums.users().delete(user.id).await;
-    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP SCHEMA {schema} CASCADE")))
         .execute(&ums_pool)
         .await
         .unwrap();

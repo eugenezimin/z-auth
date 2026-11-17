@@ -81,10 +81,12 @@ pub async fn mfa_pool() -> sqlx::PgPool {
 #[cfg(feature = "federation")]
 pub async fn session_store_pool(schema: &str) -> sqlx::PgPool {
     let admin = pool().await;
-    sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS {schema}"))
-        .execute(&admin)
-        .await
-        .expect("create schema");
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "CREATE SCHEMA IF NOT EXISTS {schema}"
+    )))
+    .execute(&admin)
+    .await
+    .expect("create schema");
     let options = z_auth_postgres::pool::connect_options(&pg_config().connection_url())
         .expect("options")
         .options([("search_path", schema)]);

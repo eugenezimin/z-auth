@@ -395,7 +395,7 @@ async fn ensure_database_exists(admin: &PgPool, db_name: &str) {
     } else {
         // Database name cannot be parameterised in DDL.
         let sql = format!("CREATE DATABASE \"{}\"", db_name);
-        sqlx::query(&sql)
+        sqlx::query(sqlx::AssertSqlSafe(sql))
             .execute(admin)
             .await
             .unwrap_or_else(|e| fatal(&format!("Failed to create database '{}': {}", db_name, e)));
@@ -423,7 +423,7 @@ async fn check_existing_data(pool: &PgPool) -> bool {
         }
 
         let sql = format!("SELECT EXISTS(SELECT 1 FROM \"public\".\"{table}\" LIMIT 1)");
-        let has_rows: bool = sqlx::query_scalar(&sql)
+        let has_rows: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
             .fetch_one(pool)
             .await
             .expect("Failed to query table");
@@ -500,7 +500,7 @@ async fn drop_schema(pool: &PgPool) {
         );
     for stmt in statements {
         print!("  → {stmt}");
-        sqlx::query(&stmt)
+        sqlx::query(sqlx::AssertSqlSafe(stmt.as_str()))
             .execute(pool)
             .await
             .unwrap_or_else(|e| fatal(&format!("Failed: {stmt}\nError: {e}")));
@@ -525,10 +525,12 @@ fn known_migrators() -> Vec<(Range<i64>, &'static Migrator)> {
 
 async fn applied_migrations(pool: &PgPool) -> Vec<(i64, Vec<u8>)> {
     if table_exists(pool, MIGRATIONS_TABLE).await {
-        sqlx::query_as(&format!("SELECT version, checksum FROM {MIGRATIONS_TABLE}"))
-            .fetch_all(pool)
-            .await
-            .expect("Failed to read applied migrations")
+        sqlx::query_as(sqlx::AssertSqlSafe(format!(
+            "SELECT version, checksum FROM {MIGRATIONS_TABLE}"
+        )))
+        .fetch_all(pool)
+        .await
+        .expect("Failed to read applied migrations")
     } else {
         Vec::new()
     }
