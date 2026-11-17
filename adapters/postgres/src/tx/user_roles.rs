@@ -13,7 +13,7 @@ use crate::rows::UserRoleRow;
 
 async fn list(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     user_id: Uuid,
 ) -> Result<Vec<UserRole>, AuthError> {
     let rows: Vec<UserRoleRow> = sqlx::query_as(sql)

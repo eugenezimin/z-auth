@@ -29,7 +29,7 @@ z-auth    = { path = "../..", version = "0.6.0" }
 z-auth-cluster = { path = "../cluster", version = "0.6.0", default-features = false, optional = true }
 z-auth-mfa  = { path = "../mfa", version = "0.6.0", default-features = false, optional = true }
 async-trait = "0.1.89"
-sqlx        = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros", "ipnet", "migrate", "json"] }
+sqlx        = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "macros", "ipnet", "migrate", "json"] }
 serde_json  = "1"
 uuid        = { version = "1", features = ["v4"] }
 chrono      = { version = "0.4", default-features = false, features = ["clock", "std"] }

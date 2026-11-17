@@ -12,7 +12,7 @@ use crate::rows::{UserRow, UserWithRoleRow, fold_user_with_roles};
 
 async fn find_one(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     value: &str,
 ) -> Result<Option<User>, AuthError> {
     let row: Option<UserRow> = sqlx::query_as(sql)
@@ -25,7 +25,7 @@ async fn find_one(
 
 async fn find_with_roles<T>(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     value: T,
 ) -> Result<Option<UserWithRoles>, AuthError>
 where
@@ -39,7 +39,11 @@ where
     Ok(fold_user_with_roles(rows))
 }
 
-async fn exists(conn: &mut PgConnection, sql: &str, value: &str) -> Result<bool, AuthError> {
+async fn exists(
+    conn: &mut PgConnection,
+    sql: &'static str,
+    value: &str,
+) -> Result<bool, AuthError> {
     let (exists,): (bool,) = sqlx::query_as(sql)
         .bind(value)
         .fetch_one(conn)
@@ -48,7 +52,11 @@ async fn exists(conn: &mut PgConnection, sql: &str, value: &str) -> Result<bool,
     Ok(exists)
 }
 
-async fn set_flag(conn: &mut PgConnection, sql: &str, user_id: Uuid) -> Result<bool, AuthError> {
+async fn set_flag(
+    conn: &mut PgConnection,
+    sql: &'static str,
+    user_id: Uuid,
+) -> Result<bool, AuthError> {
     let result = sqlx::query(sql)
         .bind(user_id)
         .execute(conn)
@@ -59,7 +67,7 @@ async fn set_flag(conn: &mut PgConnection, sql: &str, user_id: Uuid) -> Result<b
 
 async fn get_flag(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     user_id: Uuid,
 ) -> Result<Option<bool>, AuthError> {
     let row: Option<(bool,)> = sqlx::query_as(sql)

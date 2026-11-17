@@ -58,7 +58,7 @@ async fn require(conn: &mut PgConnection, id: Uuid) -> Result<Permission, AuthEr
 /// assignment per permission.
 async fn list_grants(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     owner: Uuid,
 ) -> Result<Vec<PermissionAssignment>, AuthError> {
     let rows: Vec<(Uuid, Option<Uuid>, Option<String>)> = sqlx::query_as(sql)
@@ -83,8 +83,8 @@ async fn list_grants(
 /// Delete the owner's grant of a permission, then insert the new rows.
 async fn replace_grant(
     conn: &mut PgConnection,
-    delete: &str,
-    insert: &str,
+    delete: &'static str,
+    insert: &'static str,
     owner: Uuid,
     assignment: &PermissionAssignment,
 ) -> Result<(), AuthError> {
@@ -114,7 +114,7 @@ async fn replace_grant(
 
 async fn delete_grant(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     owner: Uuid,
     permission_id: Uuid,
 ) -> Result<bool, AuthError> {

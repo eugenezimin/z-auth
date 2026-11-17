@@ -12,7 +12,7 @@ use crate::rows::RoleRow;
 
 async fn find_one<T>(
     conn: &mut PgConnection,
-    sql: &str,
+    sql: &'static str,
     value: T,
 ) -> Result<Option<Role>, AuthError>
 where
