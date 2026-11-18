@@ -127,7 +127,7 @@ The `user_agent` is optional and is truncated to 512 bytes before it is stored. 
 
 ## Request and response bodies
 
-All DTOs derive `Serialize` and `Deserialize` with the `serde` feature, and their `Debug` output redacts passwords, tokens and codes. Field names are as in Rust. Optional fields are `null` when absent in responses and may be omitted in requests. Timestamps are `chrono::DateTime<Utc>` and serialize as RFC 3339 strings, with fractional seconds when the store recorded them.
+All DTOs derive `Serialize` and `Deserialize` with the `serde` feature, and their `Debug` output redacts passwords, tokens and codes. Field names are as in Rust. Optional fields are `null` when absent in responses and may be omitted in requests. Timestamps are `time::OffsetDateTime` in UTC and serialize as RFC 3339 strings ending in `Z`, with 3, 6 or 9 fractional digits when the store recorded fractions (`z_auth::utils::rfc3339`).
 
 `POST /register` takes a `RegisterRequest` and returns the public view of the user, which never contains the password hash.
 

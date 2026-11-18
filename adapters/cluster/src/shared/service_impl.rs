@@ -47,8 +47,9 @@ fn rejected(reason: &str) -> AuthError {
     AuthError::ClusterMessageRejected(reason.into())
 }
 
-fn chrono(d: Duration) -> chrono::Duration {
-    chrono::Duration::from_std(d).unwrap_or(chrono::Duration::MAX)
+/// A configured `std` duration as a `time` span, saturating at the maximum.
+fn span(d: Duration) -> time::Duration {
+    time::Duration::try_from(d).unwrap_or(time::Duration::MAX)
 }
 
 impl ClusterServiceImpl {
@@ -204,7 +205,7 @@ impl ClusterService for ClusterServiceImpl {
     async fn tick(&self) -> Result<ClusterReport, AuthError> {
         let state = &self.messenger.state;
         let now = self.clock.now();
-        let beat = chrono(self.heartbeat);
+        let beat = span(self.heartbeat);
         let round = self.ticks.fetch_add(1, Ordering::Relaxed);
 
         // 1. Liveness.  Only state changes are written: online → offline,
@@ -224,7 +225,7 @@ impl ClusterService for ClusterServiceImpl {
                 }
             }
         }
-        state.prune_tombstones(now, chrono(self.tombstone_ttl));
+        state.prune_tombstones(now, span(self.tombstone_ttl));
 
         // 2. Heartbeats — to every peer, and every few rounds to removed
         //    peers too, so a node that was only cut off finds its way back.
@@ -286,7 +287,7 @@ impl ClusterService for ClusterServiceImpl {
             }
         }
 
-        state.prune_seen(now - chrono(self.max_skew) * 2);
+        state.prune_seen(now - span(self.max_skew) * 2);
         Ok(self.report(sent, failed, removed, merged))
     }
 
@@ -303,7 +304,7 @@ impl ClusterService for ClusterServiceImpl {
         if !self.messenger.signer.verify(&envelope) {
             return Err(rejected("bad signature"));
         }
-        if (now - envelope.sent_at).abs() > chrono(self.max_skew) {
+        if (now - envelope.sent_at).abs() > span(self.max_skew) {
             return Err(rejected("timestamp outside the allowed window"));
         }
         let introduces_sender = matches!(

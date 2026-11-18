@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
@@ -51,7 +51,8 @@ pub struct Permission {
     /// `single` / `multi`, whose options carry the positions.
     pub position: Option<u32>,
     pub options: Vec<PermissionOption>,
-    pub created_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
 }
 
 /// Ready-to-insert catalog entry.  The store assigns ids and positions.

@@ -1,7 +1,7 @@
 //! Wire shapes of the second-factor endpoints.  Responses that carry a
 //! secret (TOTP secret, otpauth URI, recovery codes) redact it in `Debug`.
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::model::{FactorView, MfaMethod};
@@ -20,7 +20,8 @@ pub struct TotpEnrollmentResponse {
     pub secret: String,
     /// Render as a QR code.
     pub otpauth_uri: String,
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub expires_at: OffsetDateTime,
 }
 
 /// Body of `POST /mfa/delivered`.
@@ -40,7 +41,8 @@ pub struct PendingDeliveryResponse {
     pub factor_id: Uuid,
     pub method: MfaMethod,
     pub destination_hint: String,
-    pub code_expires_at: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub code_expires_at: OffsetDateTime,
 }
 
 /// Body of `POST /mfa/factors/{id}/confirm`.
@@ -85,7 +87,8 @@ pub struct SendLoginCodeRequest {
 pub struct CodeSentResponse {
     pub method: String,
     pub destination_hint: String,
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub expires_at: OffsetDateTime,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]

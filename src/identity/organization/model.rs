@@ -6,7 +6,7 @@
 //! - Service contract     → [`crate::identity::organization::service`]
 //! - Business logic       → [`crate::identity::organization::service_impl`]
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 /// Page size used when a query asks for `limit = 0`.
@@ -24,8 +24,10 @@ pub struct Organization {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: OffsetDateTime,
 }
 
 /// A department of an organization.  Names are unique within the
@@ -37,8 +39,10 @@ pub struct Department {
     pub organization_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: OffsetDateTime,
 }
 
 /// An organization to create, or every field of one to replace.  The
@@ -109,8 +113,10 @@ pub struct Membership {
     /// Job title within the organization.
     pub title: Option<String>,
     pub is_primary: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: OffsetDateTime,
 }
 
 /// A membership as entered, for adding or replacing one.  `department_id`

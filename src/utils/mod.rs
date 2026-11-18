@@ -5,4 +5,5 @@ pub mod clock;
 pub mod error;
 pub mod fence;
 pub(crate) mod random;
+pub mod rfc3339;
 pub mod validation;

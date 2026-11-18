@@ -16,7 +16,7 @@
 //! | generation = current − 1, within grace, retry criteria match  | return the current pair    |
 //! | any other generation in history                               | compromise `TokenReuse`    |
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 
 use crate::conf::config::SessionConfig;
 use crate::security::authentication::model::ClientContext;
@@ -50,7 +50,7 @@ pub struct RefreshInput<'a> {
     /// The request as it would be stored (truncated user agent, hashed
     /// fingerprint) — compared with the current generation's.
     pub request: RequestTraits<'a>,
-    pub now: DateTime<Utc>,
+    pub now: OffsetDateTime,
     pub config: &'a SessionConfig,
 }
 
@@ -93,8 +93,7 @@ pub fn evaluate_refresh(input: &RefreshInput<'_>) -> RefreshDecision {
 
     let within_grace = presented.generation + 1 == session.current_generation
         && presented.superseded_at.is_some_and(|at| {
-            now.signed_duration_since(at)
-                .to_std()
+            std::time::Duration::try_from(now - at)
                 .map(|elapsed| elapsed < config.refresh_grace)
                 .unwrap_or(true) // superseded "in the future" — clock skew; treat as fresh
         })
@@ -130,14 +129,14 @@ mod tests {
     }
 
     struct Fixture {
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
         session: Session,
         generations: Vec<SessionGeneration>,
     }
 
     /// A session at generation 3; generation 2 was superseded 10 s ago.
     fn fixture() -> Fixture {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let sid = Uuid::new_v4();
         let generations = (1..=3)
             .map(|g| SessionGeneration {
@@ -147,7 +146,7 @@ mod tests {
                 issued_ip: IP_A,
                 issued_at: now,
                 access_expires_at: now,
-                superseded_at: (g < 3).then(|| now - chrono::Duration::seconds(10)),
+                superseded_at: (g < 3).then(|| now - time::Duration::seconds(10)),
                 parent_jti: None,
                 issued_user_agent: None,
                 fingerprint_hash: None,
@@ -167,8 +166,8 @@ mod tests {
                 amr: vec![],
                 current_generation: 3,
                 created_at: now,
-                idle_expires_at: now + chrono::Duration::minutes(30),
-                absolute_expires_at: now + chrono::Duration::hours(8),
+                idle_expires_at: now + time::Duration::minutes(30),
+                absolute_expires_at: now + time::Duration::hours(8),
                 ended_at: None,
             },
             generations,
@@ -242,7 +241,7 @@ mod tests {
     #[test]
     fn previous_generation_after_grace_is_reuse() {
         let mut f = fixture();
-        f.generations[1].superseded_at = Some(f.now - chrono::Duration::seconds(31));
+        f.generations[1].superseded_at = Some(f.now - time::Duration::seconds(31));
         assert!(matches!(
             decide(&f, 2, IP_A, &config(false)),
             RefreshDecision::Compromise(RevocationReason::TokenReuse)
@@ -421,7 +420,7 @@ mod tests {
         ));
 
         let mut f = fixture();
-        f.session.absolute_expires_at = f.now - chrono::Duration::seconds(1);
+        f.session.absolute_expires_at = f.now - time::Duration::seconds(1);
         assert!(matches!(
             decide(&f, 3, IP_A, &config(false)),
             RefreshDecision::Reject(AuthError::SessionExpired)

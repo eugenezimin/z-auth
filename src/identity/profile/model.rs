@@ -5,7 +5,7 @@
 //! - Service contract     → [`crate::identity::profile::service`]
 //! - Business logic       → [`crate::identity::profile::service_impl`]
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 // ── Persisted entities ────────────────────────────────────────────────────────
@@ -22,8 +22,10 @@ pub struct Phone {
     /// International format (E.164): `+` and 7 to 15 digits.
     pub number: String,
     pub is_primary: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: OffsetDateTime,
 }
 
 /// A postal address kept by a user.  A user may keep many; at most one is
@@ -45,8 +47,10 @@ pub struct Address {
     /// ISO 3166-1 alpha-2, uppercase (`US`, `DE`).
     pub country_code: String,
     pub is_primary: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: OffsetDateTime,
 }
 
 // ── Service inputs ────────────────────────────────────────────────────────────

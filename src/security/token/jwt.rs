@@ -12,10 +12,10 @@ use std::collections::BTreeMap;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
-use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::conf::config::JwtConfig;
@@ -225,7 +225,7 @@ pub fn keyring_from_keys(verifying_keys: &[[u8; 32]]) -> Result<KeyRing, AuthErr
             public_key: *bytes,
             status: KeyStatus::Active,
             published_by: None,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             revoked_at: None,
         });
     }
@@ -293,7 +293,7 @@ impl AccessTokenDecoder for Ed25519Decoder {
     fn decode(
         &self,
         token: &str,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
         expiry: ExpiryCheck,
     ) -> Result<Claims, AuthError> {
         let mut parts = token.split('.');
@@ -345,7 +345,7 @@ impl AccessTokenDecoder for Ed25519Decoder {
         if payload.iss != self.issuer {
             return Err(invalid("wrong issuer"));
         }
-        let now_secs = now.timestamp();
+        let now_secs = now.unix_timestamp();
         if payload.iat > now_secs.saturating_add(self.leeway_secs) {
             return Err(invalid("issued in the future"));
         }
@@ -382,15 +382,15 @@ mod tests {
         SigningKey::from_bytes(seed).verifying_key().to_bytes()
     }
 
-    fn claims(now: DateTime<Utc>) -> Claims {
+    fn claims(now: OffsetDateTime) -> Claims {
         Claims {
             sub: Uuid::new_v4(),
             sid: Uuid::new_v4(),
             jti: Uuid::new_v4(),
             generation: 3,
             iss: ISS.into(),
-            iat: now.timestamp(),
-            exp: now.timestamp() + 300,
+            iat: now.unix_timestamp(),
+            exp: now.unix_timestamp() + 300,
             authz: None,
             amr: vec![],
         }
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn amr_round_trips_and_is_optional_on_the_wire() {
         let issuer = Ed25519Issuer::new(&SEED).unwrap();
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let mut c = claims(now);
         c.amr = vec!["mfa".into(), "otp".into(), "pwd".into()];
         let token = issuer.mint(&c).unwrap();
@@ -431,7 +431,7 @@ mod tests {
     fn authorization_claims_round_trip() {
         let seed = [9u8; 32];
         let issuer = Ed25519Issuer::new(&seed).unwrap();
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let mut c = claims(now);
         c.authz = Some(AuthzClaims {
             roles: vec!["admin".into(), "user".into()],
@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     fn round_trip_and_determinism() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let c = claims(now);
         let issuer = Ed25519Issuer::new(&SEED).unwrap();
         let token = issuer.mint(&c).unwrap();
@@ -508,7 +508,7 @@ mod tests {
 
     #[test]
     fn tampered_payload_is_rejected() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let token = Ed25519Issuer::new(&SEED)
             .unwrap()
             .mint(&claims(now))
@@ -526,7 +526,7 @@ mod tests {
 
     #[test]
     fn foreign_algorithms_are_rejected() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let token = Ed25519Issuer::new(&SEED)
             .unwrap()
             .mint(&claims(now))
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn unknown_key_and_wrong_key_are_rejected() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let token = Ed25519Issuer::new(&OTHER_SEED)
             .unwrap()
             .mint(&claims(now))
@@ -568,13 +568,13 @@ mod tests {
 
     #[test]
     fn expiry_respects_leeway_and_ignore() {
-        let issued = Utc::now() - chrono::Duration::seconds(400);
+        let issued = OffsetDateTime::now_utc() - time::Duration::seconds(400);
         let token = Ed25519Issuer::new(&SEED)
             .unwrap()
             .mint(&claims(issued))
             .unwrap();
         let d = decoder(&[vk(&SEED)]);
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         assert!(
             matches!(
                 d.decode(&token, now, ExpiryCheck::Enforce),
@@ -584,7 +584,7 @@ mod tests {
         );
         assert!(d.decode(&token, now, ExpiryCheck::Ignore).is_ok());
 
-        let within_leeway = issued + chrono::Duration::seconds(300 + 20);
+        let within_leeway = issued + time::Duration::seconds(300 + 20);
         assert!(
             d.decode(&token, within_leeway, ExpiryCheck::Enforce)
                 .is_ok()
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn wrong_issuer_and_malformed_are_rejected() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let mut c = claims(now);
         c.iss = "someone-else".into();
         let token = Ed25519Issuer::new(&SEED).unwrap().mint(&c).unwrap();

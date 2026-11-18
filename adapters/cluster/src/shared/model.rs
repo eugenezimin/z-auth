@@ -7,7 +7,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use z_auth::eventing::DomainEvent;
@@ -25,7 +25,8 @@ pub struct NodeInfo {
     pub port: u16,
     /// z-auth version.
     pub version: String,
-    pub started_at: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub started_at: OffsetDateTime,
 }
 
 impl NodeInfo {
@@ -114,8 +115,8 @@ pub struct NodeRecord {
     pub info: NodeInfo,
     pub state: NodeState,
     pub heartbeat: HeartbeatStatus,
-    pub state_changed_at: DateTime<Utc>,
-    pub heartbeat_changed_at: DateTime<Utc>,
+    pub state_changed_at: OffsetDateTime,
+    pub heartbeat_changed_at: OffsetDateTime,
 }
 
 /// A peer as this instance sees it (in memory).
@@ -126,9 +127,11 @@ pub struct PeerState {
     pub state: NodeState,
     pub heartbeat: HeartbeatStatus,
     /// Last message received from it.
-    pub last_heard: Option<DateTime<Utc>>,
+    #[serde(with = "z_auth::utils::rfc3339::option", default)]
+    pub last_heard: Option<OffsetDateTime>,
     /// When this instance learned about it.
-    pub known_since: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub known_since: OffsetDateTime,
 }
 
 // ── Wire DTOs ─────────────────────────────────────────────────────────────────
@@ -140,7 +143,8 @@ pub struct ClusterEnvelope {
     pub message_id: Uuid,
     /// Sending node.
     pub from: Uuid,
-    pub sent_at: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub sent_at: OffsetDateTime,
     pub payload: ClusterMessage,
     pub mac: String,
 }

@@ -9,7 +9,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::constants::METHOD_RECOVERY_CODE;
@@ -154,8 +154,8 @@ pub enum FactorStatus {
 #[derive(Clone, PartialEq, Eq)]
 pub struct PendingCode {
     pub code_hash: [u8; 32],
-    pub expires_at: DateTime<Utc>,
-    pub sent_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
+    pub sent_at: OffsetDateTime,
     /// Sends while codes stayed valid (reset once one expired).
     pub sends: u32,
     /// Wrong entries of this code.
@@ -182,11 +182,11 @@ pub struct Factor {
     pub destination_hint: Option<String>,
     /// Email / SMS: a code sent to confirm enrollment or for a step-up.
     pub code: Option<PendingCode>,
-    pub created_at: DateTime<Utc>,
+    pub created_at: OffsetDateTime,
     /// When a pending factor expires.
-    pub expires_at: Option<DateTime<Utc>>,
-    pub confirmed_at: Option<DateTime<Utc>>,
-    pub last_used_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<OffsetDateTime>,
+    pub confirmed_at: Option<OffsetDateTime>,
+    pub last_used_at: Option<OffsetDateTime>,
 }
 
 /// Ready-to-insert pending factor.  The service picks the id (sealed values
@@ -215,7 +215,7 @@ pub struct NewCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendOutcome {
     /// Stored; deliver it.
-    Stored { expires_at: DateTime<Utc> },
+    Stored { expires_at: OffsetDateTime },
     /// The previous code was sent less than `resend_after` ago.
     TooSoon,
     /// `max_sends` codes were sent and the last one is still valid.
@@ -244,9 +244,9 @@ pub struct Challenge {
     pub fingerprint_hash: Option<[u8; 32]>,
     /// Second-step attempts so far.
     pub attempts: u32,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
-    pub consumed_at: Option<DateTime<Utc>>,
+    pub created_at: OffsetDateTime,
+    pub expires_at: OffsetDateTime,
+    pub consumed_at: Option<OffsetDateTime>,
     /// The email / SMS code sent for it, if any.
     pub code: Option<ChallengeCode>,
 }
@@ -267,9 +267,9 @@ pub struct NewChallenge {
 pub struct LockState {
     /// Failures in the current window.
     pub failures: u32,
-    pub locked_until: Option<DateTime<Utc>>,
+    pub locked_until: Option<OffsetDateTime>,
     /// The store's clock at read time.
-    pub now: DateTime<Utc>,
+    pub now: OffsetDateTime,
 }
 
 impl LockState {
@@ -288,9 +288,12 @@ pub struct FactorView {
     pub label: Option<String>,
     /// Email / SMS: the masked destination.
     pub destination_hint: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub confirmed_at: Option<DateTime<Utc>>,
-    pub last_used_at: Option<DateTime<Utc>>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "z_auth::utils::rfc3339::option", default)]
+    pub confirmed_at: Option<OffsetDateTime>,
+    #[serde(with = "z_auth::utils::rfc3339::option", default)]
+    pub last_used_at: Option<OffsetDateTime>,
 }
 
 /// A user's second-factor overview.
@@ -313,7 +316,7 @@ pub struct TotpEnrollment {
     /// Base32 (RFC 4648, no padding).
     pub secret: String,
     pub otpauth_uri: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
 }
 
 /// A started email / SMS enrollment: a code was sent to the destination.
@@ -322,7 +325,7 @@ pub struct PendingDelivery {
     pub factor_id: Uuid,
     pub method: MfaMethod,
     pub destination_hint: String,
-    pub code_expires_at: DateTime<Utc>,
+    pub code_expires_at: OffsetDateTime,
 }
 
 /// A confirmed factor.  `recovery_codes` is set when they were issued (with

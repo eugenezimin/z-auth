@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use z_auth::AuthError;
 use z_auth::controller::extension::{
     AssembleContext, ConfigureContext, Extension, ExtensionReport,
@@ -41,7 +41,7 @@ pub struct Mfa {
     sender: Option<Arc<dyn CodeSender>>,
     sealer: Option<Arc<dyn SecretSealer>>,
     service: OnceLock<Arc<MfaServiceImpl>>,
-    next_purge: Mutex<Option<DateTime<Utc>>>,
+    next_purge: Mutex<Option<OffsetDateTime>>,
 }
 
 impl Mfa {

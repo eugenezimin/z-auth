@@ -16,7 +16,8 @@ pub struct Role {
     /// Display name; unique.
     pub name: String,
     pub description: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
 }
 
 /// Ready-to-insert role data, consumed by
@@ -55,6 +56,11 @@ pub struct UserRole {
     pub id: uuid::Uuid,
     pub user_id: uuid::Uuid,
     pub role_id: uuid::Uuid,
-    pub assigned_at: chrono::DateTime<chrono::Utc>,
-    pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub assigned_at: time::OffsetDateTime,
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "crate::utils::rfc3339::option", default)
+    )]
+    pub revoked_at: Option<time::OffsetDateTime>,
 }

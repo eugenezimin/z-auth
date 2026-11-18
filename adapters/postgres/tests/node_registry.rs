@@ -10,7 +10,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth_cluster::shared::{
     EvictOutcome, HeartbeatStatus, NodeInfo, NodeRepository, NodeState, NodeTransition,
@@ -29,7 +29,7 @@ async fn test_node_registry_is_a_guarded_state_machine() {
         dns_name: Some("auth-1.internal".into()),
         port: 8443,
         version: "test".into(),
-        started_at: Utc::now(),
+        started_at: OffsetDateTime::now_utc(),
     };
     let row = || async {
         repo.list()
@@ -105,7 +105,7 @@ fn federation_node(service: &str) -> NodeInfo {
         dns_name: None,
         port: 7000,
         version: "test".into(),
-        started_at: Utc::now(),
+        started_at: OffsetDateTime::now_utc(),
     }
 }
 

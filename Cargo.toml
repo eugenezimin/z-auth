@@ -1,6 +1,6 @@
 [package]
 name = "z-auth"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
@@ -14,14 +14,14 @@ argon2 = ["dep:argon2"]
 # Built-in token cryptography: Ed25519 JWT access tokens + HMAC refresh tokens.
 crypto = ["dep:ed25519-dalek", "dep:hmac", "dep:sha2", "dep:serde", "dep:serde_json"]
 # Serialize / Deserialize derives on models and API DTOs.
-serde = ["dep:serde", "uuid/serde", "chrono/serde"]
+serde = ["dep:serde", "uuid/serde"]
 # YAML configuration files: `ConfigSource::yaml_file` / `yaml_str`.
 yaml = ["dep:serde", "dep:serde-saphyr"]
 
 [dependencies]
 async-trait = "0.1.89"
 uuid        = { version = "1", features = ["v4", "v5"] }
-chrono      = { version = "0.4", default-features = false, features = ["clock", "std"] }
+time        = { version = "0.3", default-features = false, features = ["std", "formatting", "parsing"] }
 getrandom   = "0.4"
 base64      = "0.23"
 argon2      = { version = "0.6", optional = true }

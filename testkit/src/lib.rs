@@ -13,7 +13,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use z_auth::prelude::*;
 use z_auth::security::token::keys::{generate_refresh_secret, generate_signing_key};
 
@@ -27,11 +27,11 @@ pub const IP_B: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
 // ── Clock ─────────────────────────────────────────────────────────────────────
 
 /// A controllable clock shared by every component of a test.
-pub struct MockClock(Mutex<DateTime<Utc>>);
+pub struct MockClock(Mutex<OffsetDateTime>);
 
 impl MockClock {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self(Mutex::new(Utc::now())))
+        Arc::new(Self(Mutex::new(OffsetDateTime::now_utc())))
     }
     pub fn advance(&self, by: Duration) {
         *self.0.lock().unwrap() += by;
@@ -39,7 +39,7 @@ impl MockClock {
 }
 
 impl Clock for MockClock {
-    fn now(&self) -> DateTime<Utc> {
+    fn now(&self) -> OffsetDateTime {
         *self.0.lock().unwrap()
     }
 }

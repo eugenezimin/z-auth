@@ -127,7 +127,7 @@ z-auth-mfa's `Mfa` validates its setup in `configure`, builds its service in `as
 
 ## A minimal custom extension
 
-The following extension installs a second-factor gate that challenges selected users and accepts a fixed code. It is adapted from `tests/second_factor.rs`, where it drives the two-step login tests against the in-memory store, and shows every piece a real gate needs. Besides z-auth it uses the `async-trait`, `chrono` and `uuid` crates. A production gate would store challenges durably, compare codes in constant time and limit attempts, which is what z-auth-mfa does.
+The following extension installs a second-factor gate that challenges selected users and accepts a fixed code. It is adapted from `tests/second_factor.rs`, where it drives the two-step login tests against the in-memory store, and shows every piece a real gate needs. Besides z-auth it uses the `async-trait`, `time` and `uuid` crates. A production gate would store challenges durably, compare codes in constant time and limit attempts, which is what z-auth-mfa does.
 
 ```rust
 use std::sync::{Arc, Mutex};
@@ -162,7 +162,7 @@ impl SecondFactorGate for StubGate {
         self.pending.lock().unwrap().push((token.clone(), account.user.id));
         Ok(SecondFactorDecision::Challenge(LoginChallenge {
             challenge_token: token,
-            expires_at: chrono::Utc::now() + chrono::Duration::minutes(5),
+            expires_at: time::OffsetDateTime::now_utc() + time::Duration::minutes(5),
             methods: vec!["totp".into()],
             delivery: None,
         }))

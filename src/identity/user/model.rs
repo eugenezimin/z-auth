@@ -23,8 +23,8 @@ pub struct User {
     pub avatar_url: Option<String>,
     pub is_active: bool,
     pub is_verified: bool,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: time::OffsetDateTime,
+    pub updated_at: time::OffsetDateTime,
 }
 
 /// A user together with their currently active roles.

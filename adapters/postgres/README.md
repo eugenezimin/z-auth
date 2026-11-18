@@ -60,7 +60,7 @@ Functions documented as running several statements (`permissions::create`, `perm
 
 ## Features
 
-No feature is enabled by default, and the default build depends only on `z-auth`, `sqlx`, `tokio`, `chrono`, `uuid`, `serde_json` and `async-trait`. Each of the first three features pulls in one optional crate and adds the matching repository and migration set. `external-identity` and `profile` pull in nothing, because their ports are defined by the core.
+No feature is enabled by default, and the default build depends only on `z-auth`, `sqlx`, `tokio`, `time`, `uuid`, `serde_json` and `async-trait`. Each of the first three features pulls in one optional crate and adds the matching repository and migration set. `external-identity` and `profile` pull in nothing, because their ports are defined by the core.
 
 | Feature | Enables | Adds |
 |---|---|---|

@@ -3,9 +3,9 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
-use chrono::{DateTime, Utc};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::shared::model::{ClusterEnvelope, ClusterMessage};
@@ -17,7 +17,8 @@ type HmacSha256 = Hmac<Sha256>;
 struct Unsigned<'a> {
     message_id: &'a Uuid,
     from: &'a Uuid,
-    sent_at: &'a DateTime<Utc>,
+    /// The exact text peers sign: see [`z_auth::utils::rfc3339`].
+    sent_at: String,
     payload: &'a ClusterMessage,
 }
 
@@ -34,13 +35,13 @@ impl EnvelopeSigner {
         &self,
         message_id: &Uuid,
         from: &Uuid,
-        sent_at: &DateTime<Utc>,
+        sent_at: &OffsetDateTime,
         payload: &ClusterMessage,
     ) -> Result<HmacSha256, AuthError> {
         let bytes = serde_json::to_vec(&Unsigned {
             message_id,
             from,
-            sent_at,
+            sent_at: z_auth::utils::rfc3339::format(*sent_at),
             payload,
         })
         .map_err(|e| AuthError::Internal(format!("cluster message encoding: {e}")))?;
@@ -54,7 +55,7 @@ impl EnvelopeSigner {
         &self,
         message_id: Uuid,
         from: Uuid,
-        sent_at: DateTime<Utc>,
+        sent_at: OffsetDateTime,
         payload: ClusterMessage,
     ) -> Result<ClusterEnvelope, AuthError> {
         let mac = self.mac(&message_id, &from, &sent_at, &payload)?;
@@ -93,7 +94,7 @@ mod tests {
             .seal(
                 Uuid::new_v4(),
                 Uuid::new_v4(),
-                Utc::now(),
+                OffsetDateTime::now_utc(),
                 ClusterMessage::SnapshotRequest,
             )
             .unwrap();

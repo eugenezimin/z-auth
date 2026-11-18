@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 
 use crate::federation::fork::{BenignFork, ChainVerdict, ForkParams, evaluate_chain};
 use crate::sync::{
@@ -82,7 +82,7 @@ fn min_opt<T: Ord + Copy>(a: Option<T>, b: Option<T>) -> Option<T> {
 #[derive(Clone, Copy)]
 struct End {
     status: SessionStatus,
-    at: Option<DateTime<Utc>>,
+    at: Option<OffsetDateTime>,
     reason: Option<RevocationReason>,
 }
 
@@ -174,7 +174,7 @@ pub fn merge_session(
         .filter(|e| e.status == status && e.reason.is_some())
         .min_by_key(|e| {
             (
-                e.at.unwrap_or(DateTime::<Utc>::MAX_UTC),
+                e.at.unwrap_or(time::PrimitiveDateTime::MAX.assume_utc()),
                 e.reason.map(reason_rank),
             )
         })
@@ -327,8 +327,8 @@ mod tests {
         }
     }
 
-    fn t(secs: i64) -> DateTime<Utc> {
-        DateTime::<Utc>::from_timestamp(1_700_000_000 + secs, 0).unwrap()
+    fn t(secs: i64) -> OffsetDateTime {
+        OffsetDateTime::from_unix_timestamp(1_700_000_000 + secs).unwrap()
     }
 
     fn session(generations: Vec<GenerationVariants>) -> SessionAggregate {

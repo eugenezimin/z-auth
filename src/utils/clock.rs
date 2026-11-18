@@ -5,10 +5,10 @@
 //! revocation cutoffs — is stamped by the store's own clock, which is the
 //! source of truth; see [`SessionRepository`](crate::security::session::SessionRepository).
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 
 pub trait Clock: Send + Sync {
-    fn now(&self) -> DateTime<Utc>;
+    fn now(&self) -> OffsetDateTime;
 }
 
 /// The system wall clock.
@@ -16,7 +16,7 @@ pub trait Clock: Send + Sync {
 pub struct SystemClock;
 
 impl Clock for SystemClock {
-    fn now(&self) -> DateTime<Utc> {
-        Utc::now()
+    fn now(&self) -> OffsetDateTime {
+        OffsetDateTime::now_utc()
     }
 }

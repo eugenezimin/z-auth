@@ -3,7 +3,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth_mfa::model::{
@@ -97,8 +97,8 @@ fn count(v: i32) -> u32 {
 /// The `code_*` columns of a factor or challenge.
 fn pending_code(
     hash: Option<Vec<u8>>,
-    expires_at: Option<DateTime<Utc>>,
-    sent_at: Option<DateTime<Utc>>,
+    expires_at: Option<OffsetDateTime>,
+    sent_at: Option<OffsetDateTime>,
     sends: i32,
     attempts: i32,
 ) -> Result<Option<PendingCode>, AuthError> {
@@ -130,15 +130,15 @@ pub(crate) struct FactorRow {
     destination_sealed: Option<Vec<u8>>,
     destination_hint: Option<String>,
     code_hash: Option<Vec<u8>>,
-    code_expires_at: Option<DateTime<Utc>>,
-    code_sent_at: Option<DateTime<Utc>>,
+    code_expires_at: Option<OffsetDateTime>,
+    code_sent_at: Option<OffsetDateTime>,
     code_sends: i32,
     code_attempts: i32,
-    created_at: DateTime<Utc>,
-    expires_at: Option<DateTime<Utc>>,
-    confirmed_at: Option<DateTime<Utc>>,
-    last_used_at: Option<DateTime<Utc>>,
-    pub(crate) db_now: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    expires_at: Option<OffsetDateTime>,
+    confirmed_at: Option<OffsetDateTime>,
+    last_used_at: Option<OffsetDateTime>,
+    pub(crate) db_now: OffsetDateTime,
 }
 
 impl TryFrom<FactorRow> for Factor {
@@ -191,16 +191,16 @@ pub(crate) struct ChallengeRow {
     user_agent: Option<String>,
     fingerprint_hash: Option<Vec<u8>>,
     attempts: i32,
-    created_at: DateTime<Utc>,
-    expires_at: DateTime<Utc>,
-    consumed_at: Option<DateTime<Utc>>,
+    created_at: OffsetDateTime,
+    expires_at: OffsetDateTime,
+    consumed_at: Option<OffsetDateTime>,
     code_factor_id: Option<Uuid>,
     code_hash: Option<Vec<u8>>,
-    code_expires_at: Option<DateTime<Utc>>,
-    code_sent_at: Option<DateTime<Utc>>,
+    code_expires_at: Option<OffsetDateTime>,
+    code_sent_at: Option<OffsetDateTime>,
     code_sends: i32,
     code_attempts: i32,
-    pub(crate) db_now: DateTime<Utc>,
+    pub(crate) db_now: OffsetDateTime,
 }
 
 impl TryFrom<ChallengeRow> for Challenge {
@@ -240,8 +240,8 @@ impl TryFrom<ChallengeRow> for Challenge {
 #[derive(sqlx::FromRow)]
 pub(crate) struct LockRow {
     pub(crate) failures: Option<i32>,
-    pub(crate) locked_until: Option<DateTime<Utc>>,
-    pub(crate) db_now: DateTime<Utc>,
+    pub(crate) locked_until: Option<OffsetDateTime>,
+    pub(crate) db_now: OffsetDateTime,
 }
 
 /// Why a code was not stored.

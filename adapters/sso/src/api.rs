@@ -23,7 +23,7 @@
 //! }
 //! ```
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use z_auth::ZAuth;
 use z_auth::controller::api::ApiError;
 use z_auth::controller::api::dto::{
@@ -49,7 +49,8 @@ pub struct RedirectResponse {
     /// (from [`Sso::set_binding_cookie`]) or, with the header transport, in
     /// the host page's storage.  Never put it in a URL.
     pub binding: String,
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub expires_at: OffsetDateTime,
 }
 
 /// The callback's query string.

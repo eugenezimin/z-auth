@@ -32,9 +32,9 @@ const ACCESS_TTL: Duration = Duration::from_secs(300);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(1_800);
 const ABSOLUTE_TIMEOUT: Duration = Duration::from_secs(28_800);
 
-/// `std` → `chrono` duration, to compare against timestamp differences.
-fn delta(d: Duration) -> chrono::TimeDelta {
-    chrono::TimeDelta::from_std(d).unwrap()
+/// `std` → `time` duration, to compare against timestamp differences.
+fn delta(d: Duration) -> time::Duration {
+    time::Duration::try_from(d).unwrap()
 }
 
 fn lifetimes(history_size: u32) -> SessionLifetimes {
@@ -135,8 +135,8 @@ async fn test_database_assigns_ids_and_timestamps() {
     // The token carries the database's values; jti is the generation row id.
     let claims = service.verifier().verify(&pair.access_token).unwrap();
     assert_eq!(claims.jti, first.access_jti);
-    assert_eq!(claims.iat, first.issued_at.timestamp());
-    assert_eq!(claims.exp, first.access_expires_at.timestamp());
+    assert_eq!(claims.iat, first.issued_at.unix_timestamp());
+    assert_eq!(claims.exp, first.access_expires_at.unix_timestamp());
     assert_eq!(pair.access_expires_at, first.access_expires_at);
 
     // Bookkeeping created_at is stamped alongside the event columns.
