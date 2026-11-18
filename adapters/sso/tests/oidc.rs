@@ -317,7 +317,7 @@ async fn unknown_keys_and_symmetric_signatures_are_refused() {
     let forged = encode(
         &header,
         &idp.claims(&redirect, "ann"),
-        &EncodingKey::from_secret(EC_X.as_bytes()),
+        &EncodingKey::from_secret(EC_X.as_bytes()).unwrap(),
     )
     .unwrap();
     idp.answer_token(forged).await;

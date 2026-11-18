@@ -114,7 +114,7 @@ flowchart LR
     audit --> summary
 ```
 
-The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`. The test job runs the database-free suites with the command shown above. The PostgreSQL job starts a `postgres:16` service, runs `setup_db` with the `shared`, `mfa`, `external-identity` and `profile` features and the `--cluster --mfa --external --profile` flags, and then runs `cargo test -p z-auth-postgres --all-features`. The features job runs the cargo-hack check. The docs job builds `cargo doc --workspace --all-features --no-deps` with rustdoc warnings denied, so broken intra-doc links fail the build. The audit job generates a lockfile and runs `cargo audit`, honouring the ignore list in `.cargo/audit.toml`, which explains beside each ignored advisory why it cannot be exploited here and when to revisit it. It currently ignores three: the `rsa` and `crypto-bigint` timing side channels, reached only through z-auth-sso's `jsonwebtoken`, which verifies signatures with public keys and never signs, and the bundled SQLite in `libsqlite3-sys`, which sqlx lists as an optional dependency that the workspace never enables. The summary job writes a table of the results into the run summary and fails if any job failed or was cancelled.
+The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy --workspace --all-targets --all-features -- -D warnings`. The test job runs the database-free suites with the command shown above. The PostgreSQL job starts a `postgres:16` service, runs `setup_db` with the `shared`, `mfa`, `external-identity` and `profile` features and the `--cluster --mfa --external --profile` flags, and then runs `cargo test -p z-auth-postgres --all-features`. The features job runs the cargo-hack check. The docs job builds `cargo doc --workspace --all-features --no-deps` with rustdoc warnings denied, so broken intra-doc links fail the build. The audit job generates a lockfile and runs `cargo audit`, honouring the ignore list in `.cargo/audit.toml`, which explains beside each ignored advisory why it cannot be exploited here and when to revisit it. It currently ignores one, the bundled SQLite in `libsqlite3-sys`, which sqlx lists as an optional dependency that the workspace never enables. The summary job writes a table of the results into the run summary and fails if any job failed or was cancelled.
 
 ## Releases
 
@@ -123,6 +123,6 @@ The format job runs `cargo fmt --all --check`. The clippy job runs `cargo clippy
 To cut a release, bump `version` in the root `Cargo.toml`, which is the version the workflow checks (the adapter crates and the testkit currently carry the same version, and keeping them in step avoids confusion), merge, then tag the merge commit and push the tag.
 
 ```sh
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.7.1
+git push origin v0.7.1
 ```
