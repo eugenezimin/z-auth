@@ -7,22 +7,22 @@
 //!   └─────────── probe succeeded ─────────────── half-open ──probe failed──► open
 //! ```
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Breaker {
     failures: u32,
-    opened_at: Option<DateTime<Utc>>,
+    opened_at: Option<OffsetDateTime>,
 }
 
 impl Breaker {
     /// Whether a request may be sent: closed, or open long enough to probe.
-    pub fn allows(&self, now: DateTime<Utc>, cooldown: chrono::Duration) -> bool {
+    pub fn allows(&self, now: OffsetDateTime, cooldown: time::Duration) -> bool {
         self.opened_at.is_none_or(|at| now - at >= cooldown)
     }
 
     /// Open and still cooling down.
-    pub fn is_open(&self, now: DateTime<Utc>, cooldown: chrono::Duration) -> bool {
+    pub fn is_open(&self, now: OffsetDateTime, cooldown: time::Duration) -> bool {
         !self.allows(now, cooldown)
     }
 
@@ -32,7 +32,7 @@ impl Breaker {
     }
 
     /// A request failed (after its retries).
-    pub fn failure(&mut self, now: DateTime<Utc>, threshold: u32) {
+    pub fn failure(&mut self, now: OffsetDateTime, threshold: u32) {
         if self.opened_at.is_some() {
             // The half-open probe failed: cool down again.
             self.opened_at = Some(now);
@@ -51,8 +51,8 @@ mod tests {
 
     #[test]
     fn opens_after_threshold_and_half_opens_after_cooldown() {
-        let t0 = Utc::now();
-        let cooldown = chrono::Duration::seconds(30);
+        let t0 = OffsetDateTime::now_utc();
+        let cooldown = time::Duration::seconds(30);
         let mut b = Breaker::default();
         assert!(b.allows(t0, cooldown));
 
@@ -61,13 +61,13 @@ mod tests {
         assert!(b.allows(t0, cooldown), "still closed below the threshold");
         b.failure(t0, 3);
         assert!(b.is_open(t0, cooldown));
-        assert!(b.is_open(t0 + chrono::Duration::seconds(29), cooldown));
+        assert!(b.is_open(t0 + time::Duration::seconds(29), cooldown));
 
         let probe_at = t0 + cooldown;
         assert!(b.allows(probe_at, cooldown), "half-open: one probe");
         b.failure(probe_at, 3);
         assert!(
-            b.is_open(probe_at + chrono::Duration::seconds(1), cooldown),
+            b.is_open(probe_at + time::Duration::seconds(1), cooldown),
             "reopened"
         );
 

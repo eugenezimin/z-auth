@@ -7,7 +7,7 @@
 use std::net::IpAddr;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::conf::config::AuthConfig;
@@ -79,12 +79,12 @@ pub struct Session {
     /// session's lifetime and carried by every access token it issues.
     pub amr: Vec<String>,
     pub current_generation: u32,
-    pub created_at: DateTime<Utc>,
+    pub created_at: OffsetDateTime,
     /// Pushed forward on every refresh.
-    pub idle_expires_at: DateTime<Utc>,
+    pub idle_expires_at: OffsetDateTime,
     /// Hard cap; never moves.
-    pub absolute_expires_at: DateTime<Utc>,
-    pub ended_at: Option<DateTime<Utc>>,
+    pub absolute_expires_at: OffsetDateTime,
+    pub ended_at: Option<OffsetDateTime>,
 }
 
 /// One token rotation within a session.  Every timestamp is assigned by the
@@ -96,10 +96,10 @@ pub struct SessionGeneration {
     /// The generation's own ID, used as the access token's `jti`.
     pub access_jti: Uuid,
     pub issued_ip: IpAddr,
-    pub issued_at: DateTime<Utc>,
-    pub access_expires_at: DateTime<Utc>,
+    pub issued_at: OffsetDateTime,
+    pub access_expires_at: OffsetDateTime,
     /// Set when the next generation is issued.
-    pub superseded_at: Option<DateTime<Utc>>,
+    pub superseded_at: Option<OffsetDateTime>,
     /// The access token presented to obtain this generation (`None` for
     /// generation 1).  Tells concurrent rotations of the same generation
     /// apart from a stolen token used on a later one.
@@ -221,7 +221,7 @@ pub struct RefreshSnapshot {
     /// The session's current generation.
     pub current: Option<SessionGeneration>,
     /// The store's clock at read time — the policy's "now".
-    pub now: DateTime<Utc>,
+    pub now: OffsetDateTime,
 }
 
 /// Result of [`SessionRepository::rotate`](crate::security::session::SessionRepository::rotate).

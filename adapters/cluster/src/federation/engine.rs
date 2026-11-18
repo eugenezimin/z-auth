@@ -18,8 +18,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::config::{ClusterSettings, SessionDistribution};
@@ -58,8 +58,9 @@ const PULL_PAGES_PER_ROUND: usize = 20;
 const NS_SESSION_END: Uuid = Uuid::from_u128(0x6a1e_0c2b_4d3f_4f0e_9a51_0001_0000_0001);
 const NS_FORK_LOSER: Uuid = Uuid::from_u128(0x6a1e_0c2b_4d3f_4f0e_9a51_0001_0000_0002);
 
-fn chrono(d: Duration) -> chrono::Duration {
-    chrono::Duration::from_std(d).unwrap_or(chrono::Duration::MAX)
+/// A configured `std` duration as a `time` span, saturating at the maximum.
+fn span(d: Duration) -> time::Duration {
+    time::Duration::try_from(d).unwrap_or(time::Duration::MAX)
 }
 
 /// The settings every cluster must agree on, hashed.  A peer with a
@@ -109,10 +110,10 @@ pub struct FederationEngine {
     is_authority: bool,
     distribution: SessionDistribution,
     max_staleness: Option<Duration>,
-    purge_horizon: chrono::Duration,
+    purge_horizon: time::Duration,
     page_size: u32,
-    entry_ttl: chrono::Duration,
-    max_skew: chrono::Duration,
+    entry_ttl: time::Duration,
+    max_skew: time::Duration,
     node_id: Uuid,
     fingerprint: String,
     catalog_target: AtomicU64,
@@ -156,18 +157,18 @@ impl FederationEngine {
             params: MergeParams {
                 fork: ForkParams {
                     retry_match: config.session.retry_match,
-                    window: chrono(r.fork.window) + chrono(settings.cluster.max_skew),
+                    window: span(r.fork.window) + span(settings.cluster.max_skew),
                     max_benign: r.fork.max_benign,
-                    budget_window: chrono(r.fork.budget_window),
+                    budget_window: span(r.fork.budget_window),
                 },
                 history_size: config.session.history_size,
             },
             distribution: r.session_distribution,
             max_staleness: r.max_staleness,
-            purge_horizon: chrono(r.purge_horizon),
+            purge_horizon: span(r.purge_horizon),
             page_size: r.pull_page_size,
-            entry_ttl: chrono(entry_ttl),
-            max_skew: chrono(settings.cluster.max_skew),
+            entry_ttl: span(entry_ttl),
+            max_skew: span(settings.cluster.max_skew),
             node_id,
             fingerprint: config_fingerprint(config, settings),
             catalog_target: AtomicU64::new(0),
@@ -246,10 +247,10 @@ impl FederationEngine {
     ) -> Result<ApplyOutcome, AuthError> {
         let now = self.clock.now();
         let s = &incoming.session;
-        let purgeable_since = s
-            .idle_expires_at
-            .min(s.absolute_expires_at)
-            .min(s.ended_at.unwrap_or(DateTime::<Utc>::MAX_UTC));
+        let purgeable_since = s.idle_expires_at.min(s.absolute_expires_at).min(
+            s.ended_at
+                .unwrap_or(time::PrimitiveDateTime::MAX.assume_utc()),
+        );
         if purgeable_since < now - self.purge_horizon {
             return Ok(ApplyOutcome::Dropped);
         }
@@ -327,7 +328,7 @@ impl FederationEngine {
         id: Uuid,
         scope: RevocationScope,
         reason: RevocationReason,
-        at: DateTime<Utc>,
+        at: OffsetDateTime,
     ) -> Revocation {
         Revocation {
             id,
@@ -377,7 +378,7 @@ impl FederationEngine {
     async fn end_user_sessions(
         &self,
         user: Uuid,
-        created_before: Option<DateTime<Utc>>,
+        created_before: Option<OffsetDateTime>,
         reason: RevocationReason,
     ) -> Result<(), AuthError> {
         for sid in self.store.active_session_ids(user).await? {
@@ -586,7 +587,7 @@ impl RefreshGate for FederationEngine {
             return Ok(());
         };
         match self.store.caught_up_at(&self.authority).await? {
-            Some(at) if self.clock.now() - at <= chrono(max) => Ok(()),
+            Some(at) if self.clock.now() - at <= span(max) => Ok(()),
             _ => Err(AuthError::ReplicaStale),
         }
     }

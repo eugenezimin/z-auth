@@ -10,7 +10,7 @@
 //! that is what stops changes from bouncing between clusters.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::sync::{
@@ -83,7 +83,7 @@ pub trait SyncStore: Send + Sync {
     /// This database has read everything `service` had committed, as of
     /// `at` (the staleness guard reads it back — shared by every instance
     /// of the cluster).
-    async fn record_caught_up(&self, service: &str, at: DateTime<Utc>) -> Result<(), AuthError>;
+    async fn record_caught_up(&self, service: &str, at: OffsetDateTime) -> Result<(), AuthError>;
 
-    async fn caught_up_at(&self, service: &str) -> Result<Option<DateTime<Utc>>, AuthError>;
+    async fn caught_up_at(&self, service: &str) -> Result<Option<OffsetDateTime>, AuthError>;
 }

@@ -15,8 +15,11 @@ const T: i64 = 1_795_000_000;
 const SESSION: &str = r#"{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","secret":[1,2,3],"status":"revoked","end_reason":"account_changed","created_ip":"10.0.0.1","user_agent":null,"amr":["pwd","otp"],"current_generation":3,"created_at":"2026-11-18T11:06:40Z","idle_expires_at":"2026-11-18T11:36:40.500Z","absolute_expires_at":"2026-11-18T19:06:40.123456Z","ended_at":"2026-11-18T11:07:40.123456789Z"}"#;
 
 /// The one place this test builds a timestamp.
-fn at(secs: i64, nanos: u32) -> chrono::DateTime<chrono::Utc> {
-    chrono::DateTime::from_timestamp(secs, nanos).unwrap()
+fn at(secs: i64, nanos: u32) -> time::OffsetDateTime {
+    time::OffsetDateTime::from_unix_timestamp(secs)
+        .unwrap()
+        .replace_nanosecond(nanos)
+        .unwrap()
 }
 
 #[test]

@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::external::{
@@ -37,8 +37,8 @@ struct IdentityRow {
     issuer: String,
     subject: String,
     email: Option<String>,
-    created_at: DateTime<Utc>,
-    last_login_at: Option<DateTime<Utc>>,
+    created_at: OffsetDateTime,
+    last_login_at: Option<OffsetDateTime>,
 }
 
 impl From<IdentityRow> for ExternalIdentity {

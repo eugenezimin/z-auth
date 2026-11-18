@@ -126,7 +126,7 @@ mod tests {
                     position: *p,
                 })
                 .collect(),
-            created_at: chrono::Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
         }
     }
 

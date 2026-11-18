@@ -46,7 +46,7 @@ impl KeyRing {
     }
 
     /// Mark `kid` revoked (known or not).  Returns `true` if it changed.
-    pub fn revoke(&self, kid: &str, at: chrono::DateTime<chrono::Utc>) -> bool {
+    pub fn revoke(&self, kid: &str, at: time::OffsetDateTime) -> bool {
         let mut keys = self.keys.write().unwrap_or_else(|e| e.into_inner());
         match keys.get_mut(kid) {
             Some(k) if k.status == KeyStatus::Revoked => false,
@@ -99,7 +99,7 @@ impl KeyRing {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use time::OffsetDateTime;
 
     fn key(kid: &str, status: KeyStatus) -> VerifyingKeyRecord {
         VerifyingKeyRecord {
@@ -107,7 +107,7 @@ mod tests {
             public_key: [7; 32],
             status,
             published_by: None,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc(),
             revoked_at: None,
         }
     }
@@ -117,12 +117,12 @@ mod tests {
         let ring = KeyRing::new();
         assert!(ring.merge(key("a", KeyStatus::Active)));
         assert_eq!(ring.active("a"), Some([7; 32]));
-        assert!(ring.revoke("a", Utc::now()));
+        assert!(ring.revoke("a", OffsetDateTime::now_utc()));
         assert!(ring.active("a").is_none());
         assert!(!ring.merge(key("a", KeyStatus::Active)), "cannot un-revoke");
         assert!(ring.is_revoked("a"));
         // A revocation that arrives before its key still sticks.
-        assert!(ring.revoke("b", Utc::now()));
+        assert!(ring.revoke("b", OffsetDateTime::now_utc()));
         assert!(!ring.merge(key("b", KeyStatus::Active)));
         assert!(ring.active("b").is_none());
     }

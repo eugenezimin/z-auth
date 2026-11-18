@@ -55,7 +55,7 @@ impl SecondFactorGate for StubGate {
             .push((token.clone(), account.user.id));
         Ok(SecondFactorDecision::Challenge(LoginChallenge {
             challenge_token: token,
-            expires_at: chrono::Utc::now() + chrono::Duration::minutes(5),
+            expires_at: time::OffsetDateTime::now_utc() + time::Duration::minutes(5),
             methods: vec!["totp".into()],
             delivery: None,
         }))

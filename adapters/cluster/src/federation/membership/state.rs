@@ -6,8 +6,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
-use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::constants::CLUSTER_OUTBOX_CAPACITY;
@@ -24,8 +24,8 @@ pub(crate) struct Sibling {
     pub state: NodeState,
     /// `Online` = healthy, `Offline` = warning.
     pub heartbeat: HeartbeatStatus,
-    pub last_heard: Option<DateTime<Utc>>,
-    pub known_since: DateTime<Utc>,
+    pub last_heard: Option<OffsetDateTime>,
+    pub known_since: OffsetDateTime,
 }
 
 /// What hearing from a sibling meant.
@@ -46,7 +46,7 @@ pub(crate) struct Link {
     /// Siblings that gave up on this cluster in the current failure round.
     tried_by: BTreeSet<Uuid>,
     dead: bool,
-    last_probe: Option<DateTime<Utc>>,
+    last_probe: Option<OffsetDateTime>,
     /// Last target that answered — tried first next time.
     target: Option<Uuid>,
     sync: Option<SyncHead>,
@@ -96,15 +96,15 @@ struct Inner {
     local: NodeInfo,
     own_state: NodeState,
     /// When this instance last ran its liveness round.
-    last_round: Option<DateTime<Utc>>,
+    last_round: Option<OffsetDateTime>,
     siblings: HashMap<Uuid, Sibling>,
-    retired: HashMap<Uuid, DateTime<Utc>>,
+    retired: HashMap<Uuid, OffsetDateTime>,
     remotes: BTreeMap<String, Remote>,
-    seen: HashMap<Uuid, DateTime<Utc>>,
+    seen: HashMap<Uuid, OffsetDateTime>,
     outbox: VecDeque<Outgoing>,
     link_outbox: VecDeque<LinkOutgoing>,
     snapshot_wanted: HashSet<Uuid>,
-    snapshot_asked: HashMap<Uuid, DateTime<Utc>>,
+    snapshot_asked: HashMap<Uuid, OffsetDateTime>,
 }
 
 pub(crate) struct MeshState {
@@ -193,7 +193,7 @@ impl MeshState {
 
     /// Learn about a sibling without having heard from it (registry,
     /// gossip).  Ignores ourselves, retired ids and other clusters.
-    pub fn add_sibling(&self, info: NodeInfo, state: NodeState, now: DateTime<Utc>) -> bool {
+    pub fn add_sibling(&self, info: NodeInfo, state: NodeState, now: OffsetDateTime) -> bool {
         let mut s = self.lock();
         if info.node_id == s.local.node_id
             || info.service != s.local.service
@@ -222,7 +222,7 @@ impl MeshState {
         from: Uuid,
         info: Option<NodeInfo>,
         state: Option<NodeState>,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
     ) -> SiblingHeard {
         let mut s = self.lock();
         if s.retired.contains_key(&from) {
@@ -322,7 +322,7 @@ impl MeshState {
     /// loop stalled) for longer than `limit` since its last round.  Its
     /// view of the siblings is then stale: they are given a fresh start
     /// instead of being judged on our own silence.
-    pub fn resumed_after_pause(&self, now: DateTime<Utc>, limit: chrono::Duration) -> bool {
+    pub fn resumed_after_pause(&self, now: OffsetDateTime, limit: time::Duration) -> bool {
         let mut s = self.lock();
         let paused = s.last_round.is_some_and(|at| now - at > limit);
         s.last_round = Some(now);
@@ -345,8 +345,8 @@ impl MeshState {
     /// evict it first through the registry.
     pub fn evaluate_liveness(
         &self,
-        now: DateTime<Utc>,
-        beat: chrono::Duration,
+        now: OffsetDateTime,
+        beat: time::Duration,
         warning_after: u32,
         missing_after: u32,
     ) -> LivenessPlan {
@@ -358,7 +358,7 @@ impl MeshState {
         let mut plan = LivenessPlan::default();
 
         let mut reachable = vec![local];
-        let mut silent_for: Vec<(Uuid, chrono::Duration)> = Vec::new();
+        let mut silent_for: Vec<(Uuid, time::Duration)> = Vec::new();
         for (id, sib) in s.siblings.iter_mut() {
             let silent = now - sib.last_heard.unwrap_or(sib.known_since);
             if silent >= warn_at && sib.heartbeat == HeartbeatStatus::Online {
@@ -390,7 +390,7 @@ impl MeshState {
     // ── retired ids ─────────────────────────────────────────────────────────
 
     /// Retire `id`: it is no longer a sibling and its messages are refused.
-    pub fn retire(&self, id: Uuid, at: DateTime<Utc>) -> bool {
+    pub fn retire(&self, id: Uuid, at: OffsetDateTime) -> bool {
         let mut s = self.lock();
         if id == s.local.node_id {
             return false;
@@ -412,7 +412,7 @@ impl MeshState {
         ids
     }
 
-    pub fn prune_retired(&self, now: DateTime<Utc>, ttl: chrono::Duration) {
+    pub fn prune_retired(&self, now: OffsetDateTime, ttl: time::Duration) {
         self.lock().retired.retain(|_, at| now - *at < ttl);
     }
 
@@ -592,8 +592,8 @@ impl MeshState {
     pub fn link_targets(
         &self,
         cluster: &str,
-        now: DateTime<Utc>,
-        cooldown: chrono::Duration,
+        now: OffsetDateTime,
+        cooldown: time::Duration,
     ) -> Vec<NodeInfo> {
         let s = self.lock();
         let Some(remote) = s.remotes.get(cluster) else {
@@ -631,7 +631,7 @@ impl MeshState {
         }
     }
 
-    pub fn link_failure(&self, cluster: &str, target: Uuid, now: DateTime<Utc>, threshold: u32) {
+    pub fn link_failure(&self, cluster: &str, target: Uuid, now: OffsetDateTime, threshold: u32) {
         if let Some(remote) = self.lock().remotes.get_mut(cluster) {
             remote
                 .link
@@ -650,8 +650,8 @@ impl MeshState {
     pub fn link_exhausted(
         &self,
         cluster: &str,
-        now: DateTime<Utc>,
-        cooldown: chrono::Duration,
+        now: OffsetDateTime,
+        cooldown: time::Duration,
     ) -> bool {
         let s = self.lock();
         let Some(remote) = s.remotes.get(cluster) else {
@@ -723,7 +723,7 @@ impl MeshState {
     }
 
     /// Whether a dead cluster should be probed now (records the probe).
-    pub fn reprobe_due(&self, cluster: &str, now: DateTime<Utc>, every: chrono::Duration) -> bool {
+    pub fn reprobe_due(&self, cluster: &str, now: OffsetDateTime, every: time::Duration) -> bool {
         let mut s = self.lock();
         let Some(remote) = s.remotes.get_mut(cluster) else {
             return false;
@@ -758,7 +758,7 @@ impl MeshState {
 
     // ── replay guard ────────────────────────────────────────────────────────
 
-    pub fn first_sighting(&self, message_id: Uuid, now: DateTime<Utc>) -> bool {
+    pub fn first_sighting(&self, message_id: Uuid, now: OffsetDateTime) -> bool {
         let mut s = self.lock();
         if s.seen.contains_key(&message_id) {
             return false;
@@ -767,7 +767,7 @@ impl MeshState {
         true
     }
 
-    pub fn prune_seen(&self, horizon: DateTime<Utc>) {
+    pub fn prune_seen(&self, horizon: OffsetDateTime) {
         self.lock().seen.retain(|_, at| *at >= horizon);
     }
 
@@ -803,7 +803,7 @@ impl MeshState {
         self.lock().snapshot_wanted.insert(from);
     }
 
-    pub fn snapshots_due(&self, now: DateTime<Utc>, cooldown: chrono::Duration) -> Vec<Uuid> {
+    pub fn snapshots_due(&self, now: OffsetDateTime, cooldown: time::Duration) -> Vec<Uuid> {
         let mut s = self.lock();
         let wanted: Vec<Uuid> = s.snapshot_wanted.drain().collect();
         wanted
@@ -834,12 +834,12 @@ mod tests {
             dns_name: None,
             port: 1,
             version: "t".into(),
-            started_at: Utc::now(),
+            started_at: OffsetDateTime::now_utc(),
         }
     }
 
-    fn beat() -> chrono::Duration {
-        chrono::Duration::seconds(2)
+    fn beat() -> time::Duration {
+        time::Duration::seconds(2)
     }
 
     impl MeshState {
@@ -850,14 +850,14 @@ mod tests {
 
     #[test]
     fn warning_then_eviction_with_majority() {
-        let t0 = Utc::now();
+        let t0 = OffsetDateTime::now_utc();
         let state = MeshState::of(node("a"));
         let (b, c) = (node("a"), node("a"));
         state.add_sibling(b.clone(), NodeState::Active, t0);
         state.add_sibling(c.clone(), NodeState::Active, t0);
 
         // c keeps talking, b goes silent.
-        let at = |secs| t0 + chrono::Duration::seconds(secs);
+        let at = |secs| t0 + time::Duration::seconds(secs);
         state.heard_sibling(c.node_id, None, None, at(3));
         let plan = state.evaluate_liveness(at(3), beat(), 1, 1);
         assert_eq!(plan.warnings, vec![b.node_id], "missed one beat (+½)");
@@ -871,13 +871,13 @@ mod tests {
 
     #[test]
     fn minority_waits_for_the_majority() {
-        let t0 = Utc::now();
+        let t0 = OffsetDateTime::now_utc();
         let state = MeshState::of(node("a"));
         let others: Vec<NodeInfo> = (0..2).map(|_| node("a")).collect();
         for o in &others {
             state.add_sibling(o.clone(), NodeState::Active, t0);
         }
-        let at = |secs| t0 + chrono::Duration::seconds(secs);
+        let at = |secs| t0 + time::Duration::seconds(secs);
         // Alone against two silent siblings: no majority.
         let plan = state.evaluate_liveness(at(5), beat(), 1, 1);
         assert!(!plan.majority);
@@ -888,8 +888,8 @@ mod tests {
 
     #[test]
     fn tie_goes_to_the_side_with_the_lowest_id() {
-        let t0 = Utc::now();
-        let at = |secs| t0 + chrono::Duration::seconds(secs);
+        let t0 = OffsetDateTime::now_utc();
+        let at = |secs| t0 + time::Duration::seconds(secs);
         let (x, y) = (node("a"), node("a"));
         let (low, high) = if x.node_id < y.node_id {
             (x, y)
@@ -917,7 +917,7 @@ mod tests {
     #[test]
     fn link_ownership_and_handover() {
         let state = MeshState::of(node("a"));
-        let t0 = Utc::now();
+        let t0 = OffsetDateTime::now_utc();
         let sibs: Vec<NodeInfo> = (0..2).map(|_| node("a")).collect();
         for s in &sibs {
             state.add_sibling(s.clone(), NodeState::Active, t0);
@@ -947,7 +947,7 @@ mod tests {
 
     #[test]
     fn retired_ids_are_dropped_everywhere() {
-        let t0 = Utc::now();
+        let t0 = OffsetDateTime::now_utc();
         let state = MeshState::of(node("a"));
         let b = node("a");
         state.add_sibling(b.clone(), NodeState::Active, t0);

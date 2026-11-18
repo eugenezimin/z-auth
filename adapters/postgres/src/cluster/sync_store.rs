@@ -8,9 +8,9 @@
 use std::net::IpAddr;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use sqlx::types::Json;
 use sqlx::{PgPool, Postgres, Transaction};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::security::session::{Session, SessionGeneration};
@@ -66,9 +66,9 @@ struct AliasRow {
     issued_ip: IpAddr,
     issued_user_agent: Option<String>,
     fingerprint_hash: Option<Vec<u8>>,
-    issued_at: DateTime<Utc>,
-    access_expires_at: DateTime<Utc>,
-    superseded_at: Option<DateTime<Utc>>,
+    issued_at: OffsetDateTime,
+    access_expires_at: OffsetDateTime,
+    superseded_at: Option<OffsetDateTime>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -584,7 +584,7 @@ impl SyncStore for PgSyncStore {
         self.next_account_version().await
     }
 
-    async fn record_caught_up(&self, service: &str, at: DateTime<Utc>) -> Result<(), AuthError> {
+    async fn record_caught_up(&self, service: &str, at: OffsetDateTime) -> Result<(), AuthError> {
         sqlx::query(q::RECORD_CAUGHT_UP)
             .bind(service)
             .bind(at)
@@ -594,7 +594,7 @@ impl SyncStore for PgSyncStore {
         Ok(())
     }
 
-    async fn caught_up_at(&self, service: &str) -> Result<Option<DateTime<Utc>>, AuthError> {
+    async fn caught_up_at(&self, service: &str) -> Result<Option<OffsetDateTime>, AuthError> {
         sqlx::query_scalar(q::CAUGHT_UP_AT)
             .bind(service)
             .fetch_optional(&self.pool)

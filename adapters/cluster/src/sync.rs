@@ -11,7 +11,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use z_auth::security::authorization::model::PermissionCatalog;
@@ -73,10 +73,14 @@ pub struct SyncSession {
     #[serde(default)]
     pub amr: Vec<String>,
     pub current_generation: u32,
-    pub created_at: DateTime<Utc>,
-    pub idle_expires_at: DateTime<Utc>,
-    pub absolute_expires_at: DateTime<Utc>,
-    pub ended_at: Option<DateTime<Utc>>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub idle_expires_at: OffsetDateTime,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub absolute_expires_at: OffsetDateTime,
+    #[serde(with = "z_auth::utils::rfc3339::option", default)]
+    pub ended_at: Option<OffsetDateTime>,
 }
 
 impl std::fmt::Debug for SyncSession {
@@ -104,9 +108,12 @@ pub struct GenerationVariant {
     pub issued_ip: IpAddr,
     pub issued_user_agent: Option<String>,
     pub fingerprint_hash: Option<[u8; 32]>,
-    pub issued_at: DateTime<Utc>,
-    pub access_expires_at: DateTime<Utc>,
-    pub superseded_at: Option<DateTime<Utc>>,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub issued_at: OffsetDateTime,
+    #[serde(with = "z_auth::utils::rfc3339")]
+    pub access_expires_at: OffsetDateTime,
+    #[serde(with = "z_auth::utils::rfc3339::option", default)]
+    pub superseded_at: Option<OffsetDateTime>,
 }
 
 /// Every known variant of one generation, sorted by `access_jti`: the

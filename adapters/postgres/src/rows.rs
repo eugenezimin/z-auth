@@ -5,7 +5,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::access::{Role, UserRole};
@@ -33,8 +33,8 @@ pub(crate) struct UserRow {
     avatar_url: Option<String>,
     is_active: bool,
     is_verified: bool,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 impl From<UserRow> for User {
@@ -64,7 +64,7 @@ pub(crate) struct UserWithRoleRow {
     role_code: Option<String>,
     role_name: Option<String>,
     role_description: Option<String>,
-    role_created_at: Option<DateTime<Utc>>,
+    role_created_at: Option<OffsetDateTime>,
 }
 
 /// Fold the joined rows of a single user into a [`UserWithRoles`].
@@ -103,7 +103,7 @@ pub(crate) struct RoleRow {
     code: String,
     name: String,
     description: Option<String>,
-    created_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
 }
 
 impl From<RoleRow> for Role {
@@ -123,8 +123,8 @@ pub(crate) struct UserRoleRow {
     id: Uuid,
     user_id: Uuid,
     role_id: Uuid,
-    assigned_at: DateTime<Utc>,
-    revoked_at: Option<DateTime<Utc>>,
+    assigned_at: OffsetDateTime,
+    revoked_at: Option<OffsetDateTime>,
 }
 
 impl From<UserRoleRow> for UserRole {
@@ -150,10 +150,10 @@ pub(crate) struct SessionRow {
     user_agent: Option<String>,
     amr: Vec<String>,
     current_generation: i32,
-    created_at: DateTime<Utc>,
-    idle_expires_at: DateTime<Utc>,
-    absolute_expires_at: DateTime<Utc>,
-    ended_at: Option<DateTime<Utc>>,
+    created_at: OffsetDateTime,
+    idle_expires_at: OffsetDateTime,
+    absolute_expires_at: OffsetDateTime,
+    ended_at: Option<OffsetDateTime>,
 }
 
 impl TryFrom<SessionRow> for Session {
@@ -185,9 +185,9 @@ pub(crate) struct GenerationRow {
     session_id: Uuid,
     generation: i32,
     issued_ip: IpAddr,
-    issued_at: DateTime<Utc>,
-    access_expires_at: DateTime<Utc>,
-    superseded_at: Option<DateTime<Utc>>,
+    issued_at: OffsetDateTime,
+    access_expires_at: OffsetDateTime,
+    superseded_at: Option<OffsetDateTime>,
     parent_jti: Option<Uuid>,
     issued_user_agent: Option<String>,
     fingerprint_hash: Option<Vec<u8>>,
@@ -229,13 +229,13 @@ impl TryFrom<GenerationRow> for SessionGeneration {
 pub(crate) struct RefreshRow {
     #[sqlx(flatten)]
     session: SessionRow,
-    db_now: DateTime<Utc>,
+    db_now: OffsetDateTime,
     p_id: Option<Uuid>,
     p_generation: Option<i32>,
     p_issued_ip: Option<IpAddr>,
-    p_issued_at: Option<DateTime<Utc>>,
-    p_access_expires_at: Option<DateTime<Utc>>,
-    p_superseded_at: Option<DateTime<Utc>>,
+    p_issued_at: Option<OffsetDateTime>,
+    p_access_expires_at: Option<OffsetDateTime>,
+    p_superseded_at: Option<OffsetDateTime>,
     p_parent_jti: Option<Uuid>,
     p_issued_user_agent: Option<String>,
     p_fingerprint_hash: Option<Vec<u8>>,
@@ -243,9 +243,9 @@ pub(crate) struct RefreshRow {
     c_id: Option<Uuid>,
     c_generation: Option<i32>,
     c_issued_ip: Option<IpAddr>,
-    c_issued_at: Option<DateTime<Utc>>,
-    c_access_expires_at: Option<DateTime<Utc>>,
-    c_superseded_at: Option<DateTime<Utc>>,
+    c_issued_at: Option<OffsetDateTime>,
+    c_access_expires_at: Option<OffsetDateTime>,
+    c_superseded_at: Option<OffsetDateTime>,
     c_parent_jti: Option<Uuid>,
     c_issued_user_agent: Option<String>,
     c_fingerprint_hash: Option<Vec<u8>>,
@@ -257,9 +257,9 @@ struct Joined {
     id: Option<Uuid>,
     generation: Option<i32>,
     issued_ip: Option<IpAddr>,
-    issued_at: Option<DateTime<Utc>>,
-    access_expires_at: Option<DateTime<Utc>>,
-    superseded_at: Option<DateTime<Utc>>,
+    issued_at: Option<OffsetDateTime>,
+    access_expires_at: Option<OffsetDateTime>,
+    superseded_at: Option<OffsetDateTime>,
     parent_jti: Option<Uuid>,
     issued_user_agent: Option<String>,
     fingerprint_hash: Option<Vec<u8>>,
@@ -344,9 +344,9 @@ pub(crate) struct RevocationRow {
     reason: PgRevocationReason,
     status: PgRevocationStatus,
     origin_node: Option<Uuid>,
-    revoked_at: DateTime<Utc>,
-    expires_at: DateTime<Utc>,
-    enforced_at: Option<DateTime<Utc>>,
+    revoked_at: OffsetDateTime,
+    expires_at: OffsetDateTime,
+    enforced_at: Option<OffsetDateTime>,
     enforced_by: Option<Uuid>,
 }
 
@@ -377,8 +377,8 @@ pub(crate) struct KeyRow {
     public_key: Vec<u8>,
     status: PgKeyStatus,
     published_by: Option<Uuid>,
-    created_at: DateTime<Utc>,
-    revoked_at: Option<DateTime<Utc>>,
+    created_at: OffsetDateTime,
+    revoked_at: Option<OffsetDateTime>,
 }
 
 impl TryFrom<KeyRow> for VerifyingKeyRecord {
@@ -409,7 +409,7 @@ pub(crate) struct PermissionRow {
     description: Option<String>,
     position: Option<i32>,
     max_length: Option<i32>,
-    created_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
 }
 
 #[derive(sqlx::FromRow)]

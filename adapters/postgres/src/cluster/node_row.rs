@@ -3,7 +3,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth_cluster::shared::{HeartbeatStatus, NodeInfo, NodeRecord, NodeState};
@@ -64,9 +64,9 @@ pub(super) struct NodeRow {
     version: String,
     state: PgNodeState,
     heartbeat: PgHeartbeatStatus,
-    started_at: DateTime<Utc>,
-    state_changed_at: DateTime<Utc>,
-    heartbeat_changed_at: DateTime<Utc>,
+    started_at: OffsetDateTime,
+    state_changed_at: OffsetDateTime,
+    heartbeat_changed_at: OffsetDateTime,
 }
 
 impl TryFrom<NodeRow> for NodeRecord {

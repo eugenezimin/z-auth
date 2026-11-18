@@ -11,8 +11,11 @@ const T: i64 = 1_795_000_000;
 const FACTOR: &str = r#"{"id":"00000000-0000-0000-0000-000000000001","method":"totp","label":"phone","destination_hint":null,"created_at":"2026-11-18T11:06:40.001Z","confirmed_at":"2026-11-18T11:06:45Z","last_used_at":null}"#;
 
 /// The one place this test builds a timestamp.
-fn at(secs: i64, nanos: u32) -> chrono::DateTime<chrono::Utc> {
-    chrono::DateTime::from_timestamp(secs, nanos).unwrap()
+fn at(secs: i64, nanos: u32) -> time::OffsetDateTime {
+    time::OffsetDateTime::from_unix_timestamp(secs)
+        .unwrap()
+        .replace_nanosecond(nanos)
+        .unwrap()
 }
 
 #[test]

@@ -13,7 +13,7 @@
 //! A benign fork keeps the lowest `access_jti` as winner; the others become
 //! aliases.
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::sync::{GenerationVariant, GenerationVariants};
@@ -24,9 +24,9 @@ use z_auth::security::session::RequestTraits;
 pub struct ForkParams {
     pub retry_match: RetryMatch,
     /// Fork window plus the allowed clock skew.
-    pub window: chrono::Duration,
+    pub window: time::Duration,
     pub max_benign: u32,
-    pub budget_window: chrono::Duration,
+    pub budget_window: time::Duration,
 }
 
 /// A fork judged benign.
@@ -36,7 +36,7 @@ pub struct BenignFork {
     pub winner: Uuid,
     pub losers: Vec<Uuid>,
     /// Latest issue time among the variants.
-    pub at: DateTime<Utc>,
+    pub at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +46,7 @@ pub enum ChainVerdict {
     },
     /// The earliest violation, by time.
     Compromised {
-        at: DateTime<Utc>,
+        at: OffsetDateTime,
     },
 }
 
@@ -58,18 +58,18 @@ fn traits(v: &GenerationVariant) -> RequestTraits<'_> {
     }
 }
 
-fn latest(variants: &[GenerationVariant]) -> DateTime<Utc> {
+fn latest(variants: &[GenerationVariant]) -> OffsetDateTime {
     variants
         .iter()
         .map(|v| v.issued_at)
         .max()
-        .unwrap_or(DateTime::<Utc>::MIN_UTC)
+        .unwrap_or(time::PrimitiveDateTime::MIN.assume_utc())
 }
 
 /// Judge every generation of a session (sorted by generation, variants
 /// sorted by jti).
 pub fn evaluate_chain(generations: &[GenerationVariants], p: &ForkParams) -> ChainVerdict {
-    let mut violations: Vec<DateTime<Utc>> = Vec::new();
+    let mut violations: Vec<OffsetDateTime> = Vec::new();
     let mut benign: Vec<BenignFork> = Vec::new();
 
     for (i, g) in generations.iter().enumerate() {
@@ -121,7 +121,7 @@ pub fn evaluate_chain(generations: &[GenerationVariants], p: &ForkParams) -> Cha
     }
 
     // Budget: too many benign forks within one window.
-    let mut times: Vec<DateTime<Utc>> = benign.iter().map(|f| f.at).collect();
+    let mut times: Vec<OffsetDateTime> = benign.iter().map(|f| f.at).collect();
     times.sort();
     let allowed = p.max_benign as usize;
     for (i, t) in times.iter().enumerate() {
@@ -145,22 +145,22 @@ pub(crate) mod tests {
     pub fn params() -> ForkParams {
         ForkParams {
             retry_match: RetryMatch::default(),
-            window: chrono::Duration::seconds(5),
+            window: time::Duration::seconds(5),
             max_benign: 1,
-            budget_window: chrono::Duration::hours(1),
+            budget_window: time::Duration::hours(1),
         }
     }
 
     pub fn variant(jti: u128, parent: Option<u128>, ip: &str, at_secs: i64) -> GenerationVariant {
-        let t0 = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
+        let t0 = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
         GenerationVariant {
             access_jti: Uuid::from_u128(jti),
             parent_jti: parent.map(Uuid::from_u128),
             issued_ip: ip.parse::<IpAddr>().unwrap(),
             issued_user_agent: None,
             fingerprint_hash: None,
-            issued_at: t0 + chrono::Duration::seconds(at_secs),
-            access_expires_at: t0 + chrono::Duration::seconds(at_secs + 300),
+            issued_at: t0 + time::Duration::seconds(at_secs),
+            access_expires_at: t0 + time::Duration::seconds(at_secs + 300),
             superseded_at: None,
         }
     }
@@ -299,7 +299,7 @@ pub(crate) mod tests {
             "two benign forks within an hour, one allowed"
         );
         let mut p = params();
-        p.budget_window = chrono::Duration::seconds(100);
+        p.budget_window = time::Duration::seconds(100);
         assert!(matches!(
             evaluate_chain(&chain, &p),
             ChainVerdict::Clean { .. }

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use z_auth::AuthError;
 use z_auth::ZAuth;
 use z_auth::identity::external::ExternalIdentity;
@@ -30,7 +30,7 @@ pub struct Redirect {
     /// victim's identity to it.  Never put it in a URL.
     pub binding: String,
     /// When the redirect stops being accepted (the cookie's lifetime).
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
 }
 
 /// The query of the provider's redirect back to the callback URL.
@@ -200,7 +200,7 @@ impl Sso {
         Ok(Redirect {
             url,
             binding,
-            expires_at: Utc::now() + self.flow_ttl,
+            expires_at: OffsetDateTime::now_utc() + self.flow_ttl,
         })
     }
 

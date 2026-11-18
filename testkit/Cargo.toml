@@ -19,5 +19,5 @@ z-auth         = { path = "..", features = ["argon2", "crypto", "serde"] }
 z-auth-cluster = { path = "../adapters/cluster", default-features = false, optional = true }
 z-auth-mfa     = { path = "../adapters/mfa", optional = true }
 async-trait      = "0.1.89"
-chrono           = { version = "0.4", default-features = false, features = ["clock", "std"] }
+time             = { version = "0.3", default-features = false, features = ["std", "formatting", "parsing"] }
 uuid             = { version = "1", features = ["v4"] }

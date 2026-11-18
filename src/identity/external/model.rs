@@ -4,7 +4,7 @@
 //! - Persistence contract → [`crate::identity::external::repository`]
 //! - Login and linking    → [`crate::security::authentication`]
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::utils::error::AuthError;
@@ -98,8 +98,13 @@ pub struct ExternalIdentity {
     /// The email the provider reported when the identity was linked.
     pub email: Option<String>,
     /// When the identity was linked.
-    pub created_at: DateTime<Utc>,
-    pub last_login_at: Option<DateTime<Utc>>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "crate::utils::rfc3339::option", default)
+    )]
+    pub last_login_at: Option<OffsetDateTime>,
 }
 
 /// Ready-to-insert link, consumed by

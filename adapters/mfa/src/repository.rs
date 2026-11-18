@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 
@@ -38,7 +38,7 @@ pub trait MfaRepository: Send + Sync {
     async fn find_factor(
         &self,
         factor_id: Uuid,
-    ) -> Result<Option<(Factor, DateTime<Utc>)>, AuthError>;
+    ) -> Result<Option<(Factor, OffsetDateTime)>, AuthError>;
 
     /// Insert a pending factor that expires after `ttl`, replacing any
     /// pending factor of the same user and method.
@@ -122,7 +122,7 @@ pub trait MfaRepository: Send + Sync {
     async fn find_challenge(
         &self,
         challenge_id: Uuid,
-    ) -> Result<Option<(Challenge, DateTime<Utc>)>, AuthError>;
+    ) -> Result<Option<(Challenge, OffsetDateTime)>, AuthError>;
 
     /// Compare-and-swap: count one attempt if the challenge is unconsumed,
     /// unexpired and below `max` attempts.  Returns the new count, or

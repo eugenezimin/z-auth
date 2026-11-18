@@ -13,7 +13,7 @@ use {
     crate::message::{self, EmailMessage},
     crate::router::failed,
     async_trait::async_trait,
-    chrono::Utc,
+    time::OffsetDateTime,
     z_auth::AuthError,
     z_auth_mfa::{CodeDelivery, CodeSender},
 };
@@ -25,7 +25,13 @@ use {
     feature = "mailgun"
 ))]
 fn render(sender_name: &str, d: &CodeDelivery) -> EmailMessage {
-    message::email(sender_name, d.purpose, &d.code, d.expires_at, Utc::now())
+    message::email(
+        sender_name,
+        d.purpose,
+        &d.code,
+        d.expires_at,
+        OffsetDateTime::now_utc(),
+    )
 }
 
 // ── SMTP ──────────────────────────────────────────────────────────────────────

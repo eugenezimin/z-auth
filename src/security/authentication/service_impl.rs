@@ -154,8 +154,7 @@ impl AuthenticationServiceImpl {
         {
             let (stores, _) = self.external()?;
             // Outlives the challenge a little; the key is unguessable.
-            let ttl = (challenge.expires_at - self.clock.now())
-                .to_std()
+            let ttl = std::time::Duration::try_from(challenge.expires_at - self.clock.now())
                 .unwrap_or_default()
                 + Duration::from_secs(60);
             stores
@@ -328,8 +327,8 @@ impl AuthenticationServiceImpl {
             jti: generation.access_jti,
             generation: generation.generation,
             iss: self.config.jwt.issuer.clone(),
-            iat: generation.issued_at.timestamp(),
-            exp: generation.access_expires_at.timestamp(),
+            iat: generation.issued_at.unix_timestamp(),
+            exp: generation.access_expires_at.unix_timestamp(),
             authz,
             amr: session.amr.clone(),
         };

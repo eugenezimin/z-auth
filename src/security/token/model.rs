@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::security::session::model::RevocationReason;
@@ -133,12 +133,18 @@ pub struct Revocation {
     pub origin_node: Uuid,
     /// For [`RevocationScope::User`], tokens issued at or before this
     /// instant are revoked.
-    pub revoked_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub revoked_at: OffsetDateTime,
     /// After this instant every token covered by the entry has expired on
     /// its own, so the entry can be dropped.
-    pub expires_at: DateTime<Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub expires_at: OffsetDateTime,
     /// Set once a covered token was presented and blocked.
-    pub enforced_at: Option<DateTime<Utc>>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "crate::utils::rfc3339::option", default)
+    )]
+    pub enforced_at: Option<OffsetDateTime>,
     /// The instance that enforced it.
     pub enforced_by: Option<Uuid>,
 }
@@ -186,8 +192,13 @@ pub struct VerifyingKeyRecord {
     pub status: KeyStatus,
     /// Instance that published it; `None` for keys from configuration.
     pub published_by: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-    pub revoked_at: Option<DateTime<Utc>>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: OffsetDateTime,
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "crate::utils::rfc3339::option", default)
+    )]
+    pub revoked_at: Option<OffsetDateTime>,
 }
 
 /// Ready-to-store verifying key.

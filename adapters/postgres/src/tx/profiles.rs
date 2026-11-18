@@ -9,8 +9,8 @@
 //! for one user wait for each other until the transaction ends.  An item
 //! that is not found changes nothing.
 
-use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::profile::{Address, NewAddress, NewPhone, Phone};
@@ -25,8 +25,8 @@ struct PhoneRow {
     label: String,
     number: String,
     is_primary: bool,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 impl From<PhoneRow> for Phone {
@@ -55,8 +55,8 @@ struct AddressRow {
     postal_code: Option<String>,
     country_code: String,
     is_primary: bool,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 impl From<AddressRow> for Address {

@@ -122,6 +122,6 @@ pub fn totp_code(
     offset_steps: i64,
 ) -> String {
     let key = base32::decode(secret).expect("base32 secret");
-    let at = clock.now().timestamp() + offset_steps * params.period_secs as i64;
+    let at = clock.now().unix_timestamp() + offset_steps * params.period_secs as i64;
     totp::totp(&key, at, params)
 }

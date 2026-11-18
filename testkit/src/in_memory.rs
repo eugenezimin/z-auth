@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use z_auth::prelude::*;
@@ -41,7 +41,7 @@ struct State {
     keys: HashMap<String, VerifyingKeyRecord>,
     external_identities: HashMap<Uuid, ExternalIdentity>,
     /// key → (value, expires_at)
-    flows: HashMap<String, (String, DateTime<Utc>)>,
+    flows: HashMap<String, (String, OffsetDateTime)>,
     #[cfg(feature = "shared")]
     nodes: HashMap<Uuid, NodeRecord>,
     #[cfg(feature = "shared")]
@@ -50,7 +50,7 @@ struct State {
     node_reads: usize,
     /// node id → when it was retired (federation mode)
     #[cfg(feature = "shared")]
-    retired_at: HashMap<Uuid, DateTime<Utc>>,
+    retired_at: HashMap<Uuid, OffsetDateTime>,
 
     // ── sync (federation mode) ──────────────────────────────────────────
     /// (kind, key) → seq of the record's latest change
@@ -70,7 +70,7 @@ struct State {
     #[cfg(feature = "federation")]
     cursors: HashMap<z_auth_cluster::federation::SiteId, z_auth_cluster::federation::FeedCursor>,
     #[cfg(feature = "federation")]
-    caught_up: HashMap<String, DateTime<Utc>>,
+    caught_up: HashMap<String, OffsetDateTime>,
     #[cfg(feature = "federation")]
     versions: u64,
     /// Records applied from other clusters (for "no ping-pong" checks).
@@ -131,7 +131,7 @@ impl InMemoryDb {
         }
     }
 
-    fn now(&self) -> DateTime<Utc> {
+    fn now(&self) -> OffsetDateTime {
         self.clock.now()
     }
 
@@ -546,7 +546,7 @@ impl UserRoleRepository for InMemoryDb {
 
 // ── SessionRepository ─────────────────────────────────────────────────────────
 
-fn is_live(s: &Session, now: DateTime<Utc>) -> bool {
+fn is_live(s: &Session, now: OffsetDateTime) -> bool {
     s.status == SessionStatus::Active && s.idle_expires_at > now && s.absolute_expires_at > now
 }
 
@@ -554,7 +554,7 @@ fn new_generation(
     session_id: Uuid,
     generation: u32,
     issued: &IssueContext,
-    now: DateTime<Utc>,
+    now: OffsetDateTime,
     lifetimes: &SessionLifetimes,
 ) -> SessionGeneration {
     SessionGeneration {
@@ -1153,7 +1153,7 @@ impl NodeRepository for InMemoryDb {
 
     async fn purge_retired(&self, older_than: Duration) -> Result<u64, AuthError> {
         let now = self.now();
-        let horizon = chrono::Duration::from_std(older_than).unwrap_or(chrono::Duration::MAX);
+        let horizon = time::Duration::try_from(older_than).unwrap_or(time::Duration::MAX);
         let mut s = self.lock();
         let expired: Vec<Uuid> = s
             .retired_at
@@ -1763,7 +1763,7 @@ mod sync_store {
         async fn record_caught_up(
             &self,
             service: &str,
-            at: DateTime<Utc>,
+            at: OffsetDateTime,
         ) -> Result<(), AuthError> {
             let mut s = self.lock();
             let slot = s.caught_up.entry(service.to_string()).or_insert(at);
@@ -1771,7 +1771,7 @@ mod sync_store {
             Ok(())
         }
 
-        async fn caught_up_at(&self, service: &str) -> Result<Option<DateTime<Utc>>, AuthError> {
+        async fn caught_up_at(&self, service: &str) -> Result<Option<OffsetDateTime>, AuthError> {
             Ok(self.lock().caught_up.get(service).copied())
         }
     }
@@ -1794,8 +1794,8 @@ mod mfa_store {
 
     struct LockRow {
         failures: u32,
-        window_started_at: DateTime<Utc>,
-        locked_until: Option<DateTime<Utc>>,
+        window_started_at: OffsetDateTime,
+        locked_until: Option<OffsetDateTime>,
     }
 
     #[derive(Default)]
@@ -1823,7 +1823,7 @@ mod mfa_store {
         slot: Option<PendingCode>,
         code_hash: [u8; 32],
         limits: CodeLimits,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
     ) -> Result<PendingCode, SendOutcome> {
         let sends = match &slot {
             Some(c) if c.sent_at + limits.resend_after > now => return Err(SendOutcome::TooSoon),
@@ -1874,7 +1874,7 @@ mod mfa_store {
         async fn find_factor(
             &self,
             factor_id: Uuid,
-        ) -> Result<Option<(Factor, DateTime<Utc>)>, AuthError> {
+        ) -> Result<Option<(Factor, OffsetDateTime)>, AuthError> {
             let now = self.now();
             Ok(self
                 .lock()
@@ -2104,7 +2104,7 @@ mod mfa_store {
         async fn find_challenge(
             &self,
             challenge_id: Uuid,
-        ) -> Result<Option<(Challenge, DateTime<Utc>)>, AuthError> {
+        ) -> Result<Option<(Challenge, OffsetDateTime)>, AuthError> {
             let now = self.now();
             Ok(self
                 .lock()
@@ -2269,8 +2269,8 @@ mod profile_store {
         department_id: Option<Uuid>,
         title: Option<String>,
         is_primary: bool,
-        created_at: DateTime<Utc>,
-        updated_at: DateTime<Utc>,
+        created_at: OffsetDateTime,
+        updated_at: OffsetDateTime,
         seq: u64,
     }
 

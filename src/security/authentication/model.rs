@@ -7,7 +7,7 @@
 
 use std::net::IpAddr;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::security::session::model::IssueContext;
@@ -81,10 +81,10 @@ pub struct Credentials {
 pub struct TokenPair {
     pub session_id: Uuid,
     pub access_token: String,
-    pub access_expires_at: DateTime<Utc>,
+    pub access_expires_at: OffsetDateTime,
     pub refresh_token: String,
     /// When the session will end if not refreshed: min(idle, absolute).
-    pub refresh_expires_at: DateTime<Utc>,
+    pub refresh_expires_at: OffsetDateTime,
 }
 
 /// What a login produced: tokens, or a request for a second factor.
@@ -116,7 +116,7 @@ impl LoginOutcome {
 pub struct LoginChallenge {
     /// Opaque, single-use token the client sends back with the code.
     pub challenge_token: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
     /// Methods the user may answer with (e.g. `totp`, `email`, `sms`,
     /// `recovery_code`), preferred first.
     pub methods: Vec<String>,
@@ -131,7 +131,7 @@ pub struct ChallengeDelivery {
     pub method: String,
     /// Masked destination, e.g. `j***@example.com` or `•••• 1234`.
     pub destination_hint: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
 }
 
 /// What a sign-in through an external identity provider produced.
@@ -164,7 +164,7 @@ impl From<LoginOutcome> for ExternalLoginOutcome {
 pub struct LinkChallenge {
     /// Opaque token the client sends back with the password.
     pub challenge_token: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
     /// The existing account's email, to show the user.
     pub email: String,
 }

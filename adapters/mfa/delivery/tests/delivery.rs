@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use serde_json::Value;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use wiremock::matchers::{basic_auth, body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -44,7 +44,7 @@ fn delivery(method: MfaMethod, to: &str) -> CodeDelivery {
         destination: to.into(),
         code: CODE.into(),
         purpose: CodePurpose::Login,
-        expires_at: Utc::now() + Duration::minutes(5),
+        expires_at: OffsetDateTime::now_utc() + Duration::minutes(5),
     }
 }
 
@@ -206,8 +206,8 @@ fn smtp_messages_carry_the_code_in_both_parts() {
         NAME,
         CodePurpose::Enrollment,
         CODE,
-        Utc::now() + Duration::minutes(10),
-        Utc::now(),
+        OffsetDateTime::now_utc() + Duration::minutes(10),
+        OffsetDateTime::now_utc(),
     );
     let mail = email::build_email(NAME, FROM, "bob@example.com", &msg).unwrap();
     let raw = String::from_utf8(mail.formatted()).unwrap();
@@ -306,7 +306,7 @@ async fn webhook_requests_are_signed_and_authorized() {
         .unwrap()
         .parse()
         .unwrap();
-    assert!((Utc::now().timestamp() - ts).abs() < 60);
+    assert!((OffsetDateTime::now_utc().unix_timestamp() - ts).abs() < 60);
     assert_eq!(
         req.headers[WEBHOOK_SIGNATURE_HEADER].to_str().unwrap(),
         signature("shared-secret", ts, &req.body)
@@ -400,7 +400,7 @@ fn destinations_are_masked_for_logs() {
 
 #[test]
 fn messages_name_the_purpose_and_expiry() {
-    let now = Utc::now();
+    let now = OffsetDateTime::now_utc();
     let sms = message::sms(
         "Acme",
         CodePurpose::StepUp,

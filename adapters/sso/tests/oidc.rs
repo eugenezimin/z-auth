@@ -76,7 +76,7 @@ impl Idp {
 
     /// The claims of a valid ID token for `redirect`.
     fn claims(&self, redirect: &Redirect, sub: &str) -> Value {
-        let now = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
         json!({
             "iss": self.issuer(),
             "aud": CLIENT_ID,
@@ -272,7 +272,7 @@ async fn tampered_id_tokens_are_refused() {
         ),
         (
             "expired",
-            Box::new(|c| c["exp"] = json!(chrono::Utc::now().timestamp() - 3600)),
+            Box::new(|c| c["exp"] = json!(time::OffsetDateTime::now_utc().unix_timestamp() - 3600)),
         ),
         (
             "azp",

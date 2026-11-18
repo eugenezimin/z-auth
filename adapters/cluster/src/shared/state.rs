@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, RwLock};
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::constants::CLUSTER_OUTBOX_CAPACITY;
@@ -45,7 +45,7 @@ pub(crate) enum Liveness {
 struct Tombstone {
     info: NodeInfo,
     state: NodeState,
-    removed_at: DateTime<Utc>,
+    removed_at: OffsetDateTime,
 }
 
 pub(crate) struct ClusterState {
@@ -56,11 +56,11 @@ pub(crate) struct ClusterState {
     tombstones: RwLock<HashMap<Uuid, Tombstone>>,
     outbox: Mutex<VecDeque<Outgoing>>,
     /// message id → when it was first seen (replay guard)
-    seen: Mutex<HashMap<Uuid, DateTime<Utc>>>,
+    seen: Mutex<HashMap<Uuid, OffsetDateTime>>,
     /// Peers whose digest differed from ours; asked for a snapshot next tick.
     snapshot_wanted: Mutex<HashSet<Uuid>>,
     /// peer → when we last asked it for a snapshot
-    snapshot_asked: Mutex<HashMap<Uuid, DateTime<Utc>>>,
+    snapshot_asked: Mutex<HashMap<Uuid, OffsetDateTime>>,
 }
 
 impl ClusterState {
@@ -89,7 +89,7 @@ impl ClusterState {
 
     /// Learn about a node without having heard from it (registry, gossip).
     /// It counts as online until it misses its first heartbeat.
-    pub fn discover(&self, info: NodeInfo, state: NodeState, now: DateTime<Utc>) {
+    pub fn discover(&self, info: NodeInfo, state: NodeState, now: OffsetDateTime) {
         if info.node_id == self.local.node_id {
             return;
         }
@@ -110,7 +110,7 @@ impl ClusterState {
         from: Uuid,
         info: Option<NodeInfo>,
         state: Option<NodeState>,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
     ) -> Heard {
         let mut peers = self.peers.write().unwrap_or_else(|e| e.into_inner());
         if let Some(peer) = peers.get_mut(&from) {
@@ -228,8 +228,8 @@ impl ClusterState {
     /// `offline_after + remove_after + ½` beats.
     pub fn update_liveness(
         &self,
-        now: DateTime<Utc>,
-        beat: chrono::Duration,
+        now: OffsetDateTime,
+        beat: time::Duration,
         offline_after: u32,
         remove_after: u32,
     ) -> Vec<Liveness> {
@@ -264,7 +264,7 @@ impl ClusterState {
     }
 
     /// Forget tombstones older than `ttl`.
-    pub fn prune_tombstones(&self, now: DateTime<Utc>, ttl: chrono::Duration) {
+    pub fn prune_tombstones(&self, now: OffsetDateTime, ttl: time::Duration) {
         self.tombstones
             .write()
             .unwrap_or_else(|e| e.into_inner())
@@ -274,7 +274,7 @@ impl ClusterState {
     // ── replay guard ────────────────────────────────────────────────────────
 
     /// `false` if the message id was seen before.
-    pub fn first_sighting(&self, message_id: Uuid, now: DateTime<Utc>) -> bool {
+    pub fn first_sighting(&self, message_id: Uuid, now: OffsetDateTime) -> bool {
         let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
         if seen.contains_key(&message_id) {
             return false;
@@ -285,7 +285,7 @@ impl ClusterState {
 
     /// Forget message ids older than `horizon` (they fail the skew check
     /// anyway).
-    pub fn prune_seen(&self, horizon: DateTime<Utc>) {
+    pub fn prune_seen(&self, horizon: OffsetDateTime) {
         self.seen
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -320,7 +320,7 @@ impl ClusterState {
     }
 
     /// Peers to ask for a snapshot now (respecting the per-peer cooldown).
-    pub fn snapshots_due(&self, now: DateTime<Utc>, cooldown: chrono::Duration) -> Vec<Uuid> {
+    pub fn snapshots_due(&self, now: OffsetDateTime, cooldown: time::Duration) -> Vec<Uuid> {
         let wanted: Vec<Uuid> = self
             .snapshot_wanted
             .lock()

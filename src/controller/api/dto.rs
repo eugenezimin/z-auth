@@ -31,7 +31,8 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
     pub is_active: bool,
     pub is_verified: bool,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
 }
 
 // ── Authentication ────────────────────────────────────────────────────────────
@@ -56,9 +57,11 @@ pub struct RefreshRequest {
 pub struct TokenPairResponse {
     pub session_id: uuid::Uuid,
     pub access_token: String,
-    pub access_expires_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub access_expires_at: time::OffsetDateTime,
     pub refresh_token: String,
-    pub refresh_expires_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub refresh_expires_at: time::OffsetDateTime,
 }
 
 /// Response of `POST /login`.
@@ -80,7 +83,8 @@ pub enum LoginResponse {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoginChallengeResponse {
     pub challenge_token: String,
-    pub expires_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub expires_at: time::OffsetDateTime,
     /// Methods accepted for this challenge, preferred first.
     pub methods: Vec<String>,
     /// Set when a code was already sent.
@@ -93,7 +97,8 @@ pub struct ChallengeDeliveryDto {
     /// `email` or `sms`.
     pub method: String,
     pub destination_hint: String,
-    pub expires_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub expires_at: time::OffsetDateTime,
 }
 
 /// Body of `POST /login/second-factor`.
@@ -132,7 +137,8 @@ pub enum ExternalLoginResponse {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinkChallengeResponse {
     pub challenge_token: String,
-    pub expires_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub expires_at: time::OffsetDateTime,
     /// The existing account's email.
     pub email: String,
 }
@@ -154,8 +160,13 @@ pub struct ExternalIdentityResponse {
     pub provider: String,
     /// The email the provider reported when the identity was linked.
     pub email: Option<String>,
-    pub linked_at: chrono::DateTime<chrono::Utc>,
-    pub last_login_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub linked_at: time::OffsetDateTime,
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "crate::utils::rfc3339::option", default)
+    )]
+    pub last_login_at: Option<time::OffsetDateTime>,
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
@@ -180,8 +191,10 @@ pub struct PhoneResponse {
     /// E.164, e.g. `+15551234567`.
     pub number: String,
     pub is_primary: bool,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: time::OffsetDateTime,
 }
 
 /// Body of `POST /me/addresses` and `PUT /me/addresses/{id}`.
@@ -213,8 +226,10 @@ pub struct AddressResponse {
     pub postal_code: Option<String>,
     pub country_code: String,
     pub is_primary: bool,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: time::OffsetDateTime,
 }
 
 // ── Organizations ─────────────────────────────────────────────────────────────
@@ -233,8 +248,10 @@ pub struct OrganizationResponse {
     pub id: uuid::Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: time::OffsetDateTime,
 }
 
 /// Response of `GET /organizations`.
@@ -262,8 +279,10 @@ pub struct DepartmentResponse {
     pub organization_id: uuid::Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: time::OffsetDateTime,
 }
 
 /// Body of `POST /me/organizations` and `PUT /me/organizations/{id}`.
@@ -297,8 +316,10 @@ pub struct MembershipResponse {
     pub department: Option<CatalogRefDto>,
     pub title: Option<String>,
     pub is_primary: bool,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub created_at: time::OffsetDateTime,
+    #[cfg_attr(feature = "serde", serde(with = "crate::utils::rfc3339"))]
+    pub updated_at: time::OffsetDateTime,
 }
 
 /// Response of `GET /organizations/{id}/members`.

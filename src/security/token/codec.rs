@@ -10,7 +10,7 @@
 //! (feature `crypto`): `token::jwt::Ed25519Issuer`, `token::jwt::Ed25519Decoder`
 //! and `token::refresh::HmacRefreshCodec`.
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::security::token::model::{Claims, ExpiryCheck, RefreshToken};
@@ -40,7 +40,7 @@ pub trait AccessTokenDecoder: Send + Sync {
     fn decode(
         &self,
         token: &str,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
         expiry: ExpiryCheck,
     ) -> Result<Claims, AuthError>;
 }

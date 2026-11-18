@@ -112,7 +112,7 @@ async fn user(s: &Setup) -> User {
 
 fn now_code(secret_b32: &str, offset_steps: i64) -> String {
     let key = base32::decode(secret_b32).unwrap();
-    let at = chrono::Utc::now().timestamp() + offset_steps * 30;
+    let at = time::OffsetDateTime::now_utc().unix_timestamp() + offset_steps * 30;
     totp::totp(&key, at, &TOTP)
 }
 

@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, RwLock};
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::security::token::model::{
@@ -78,21 +78,21 @@ impl Denylist {
     /// Reject tokens whose session is revoked, whose user was revoked at
     /// or after the token's `iat`, or that were revoked one by one.  A hit
     /// on a pending session or user revocation is recorded for enforcement.
-    pub fn check(&self, claims: &Claims, now: DateTime<Utc>) -> Result<(), AuthError> {
+    pub fn check(&self, claims: &Claims, now: OffsetDateTime) -> Result<(), AuthError> {
         self.check_scopes(claims, now, true)
     }
 
     /// [`check`](Self::check) for a refresh: a token revoked on its own
     /// (the losing pair of a refresh fork) may still be exchanged — the
     /// refresh policy decides.
-    pub fn check_for_refresh(&self, claims: &Claims, now: DateTime<Utc>) -> Result<(), AuthError> {
+    pub fn check_for_refresh(&self, claims: &Claims, now: OffsetDateTime) -> Result<(), AuthError> {
         self.check_scopes(claims, now, false)
     }
 
     fn check_scopes(
         &self,
         claims: &Claims,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
         tokens: bool,
     ) -> Result<(), AuthError> {
         let hit = {
@@ -110,7 +110,7 @@ impl Denylist {
                 .into_iter()
                 .flatten()
                 .filter_map(live)
-                .filter(|r| claims.iat <= r.revoked_at.timestamp());
+                .filter(|r| claims.iat <= r.revoked_at.unix_timestamp());
             let by_token = inner
                 .tokens
                 .get(&claims.jti)
@@ -150,7 +150,7 @@ impl Denylist {
     }
 
     /// Every live revocation, sorted by id — for snapshots and digests.
-    pub fn entries(&self, now: DateTime<Utc>) -> Vec<Revocation> {
+    pub fn entries(&self, now: OffsetDateTime) -> Vec<Revocation> {
         let inner = self.inner.read().unwrap_or_else(|e| e.into_inner());
         let mut live: Vec<Revocation> = inner
             .all
@@ -163,7 +163,7 @@ impl Denylist {
     }
 
     /// Drop entries that have expired.  Returns how many were removed.
-    pub fn prune(&self, now: DateTime<Utc>) -> usize {
+    pub fn prune(&self, now: OffsetDateTime) -> usize {
         let mut inner = self.inner.write().unwrap_or_else(|e| e.into_inner());
         let expired: Vec<Uuid> = inner
             .all
@@ -214,7 +214,7 @@ mod tests {
     use crate::security::session::RevocationReason;
     use std::time::Duration;
 
-    fn revocation(scope: RevocationScope, now: DateTime<Utc>) -> Revocation {
+    fn revocation(scope: RevocationScope, now: OffsetDateTime) -> Revocation {
         Revocation {
             id: Uuid::new_v4(),
             scope,
@@ -244,14 +244,14 @@ mod tests {
 
     #[test]
     fn pending_hits_are_recorded_once_and_enforced_wins() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let list = Denylist::new();
         let sid = Uuid::new_v4();
         let mut r = revocation(RevocationScope::Session(sid), now);
         assert!(list.apply(&r));
         assert!(!list.apply(&r), "idempotent");
 
-        let c = claims(Uuid::new_v4(), sid, now.timestamp());
+        let c = claims(Uuid::new_v4(), sid, now.unix_timestamp());
         assert!(list.check(&c, now).is_err());
         assert!(list.check(&c, now).is_err());
         let hits = list.drain_hits();
@@ -269,15 +269,15 @@ mod tests {
 
     #[test]
     fn user_cutoff_and_expiry() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let list = Denylist::new();
         let uid = Uuid::new_v4();
         list.apply(&revocation(RevocationScope::User(uid), now));
         assert!(
-            list.check(&claims(uid, Uuid::new_v4(), now.timestamp()), now)
+            list.check(&claims(uid, Uuid::new_v4(), now.unix_timestamp()), now)
                 .is_err()
         );
-        let later = now.timestamp() + 1;
+        let later = now.unix_timestamp() + 1;
         assert!(
             list.check(&claims(uid, Uuid::new_v4(), later), now).is_ok(),
             "issued after"
@@ -285,7 +285,7 @@ mod tests {
 
         let after = now + Duration::from_secs(301);
         assert!(
-            list.check(&claims(uid, Uuid::new_v4(), now.timestamp()), after)
+            list.check(&claims(uid, Uuid::new_v4(), now.unix_timestamp()), after)
                 .is_ok()
         );
         assert_eq!(list.prune(after), 1);
@@ -294,15 +294,15 @@ mod tests {
 
     #[test]
     fn a_token_revoked_alone_blocks_use_but_not_refresh_and_is_never_enforced() {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let d = Denylist::new();
         let (sub, sid) = (Uuid::new_v4(), Uuid::new_v4());
-        let loser = claims(sub, sid, now.timestamp());
+        let loser = claims(sub, sid, now.unix_timestamp());
         d.apply(&revocation(RevocationScope::Token(loser.jti), now));
         assert!(matches!(d.check(&loser, now), Err(AuthError::TokenRevoked)));
         assert!(d.check_for_refresh(&loser, now).is_ok());
         assert!(d.drain_hits().is_empty(), "no enforcement");
-        let other = claims(sub, sid, now.timestamp());
+        let other = claims(sub, sid, now.unix_timestamp());
         assert!(
             d.check(&other, now).is_ok(),
             "other tokens of the session are fine"

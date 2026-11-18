@@ -6,14 +6,20 @@ use {
     crate::message,
     crate::router::failed,
     async_trait::async_trait,
-    chrono::Utc,
+    time::OffsetDateTime,
     z_auth::AuthError,
     z_auth_mfa::{CodeDelivery, CodeSender},
 };
 
 #[cfg(any(feature = "twilio", feature = "webhook"))]
 fn text(sender_name: &str, d: &CodeDelivery) -> String {
-    message::sms(sender_name, d.purpose, &d.code, d.expires_at, Utc::now())
+    message::sms(
+        sender_name,
+        d.purpose,
+        &d.code,
+        d.expires_at,
+        OffsetDateTime::now_utc(),
+    )
 }
 
 // ── Twilio ────────────────────────────────────────────────────────────────────
@@ -130,7 +136,7 @@ mod webhook {
                 "code": d.code,
                 "purpose": purpose_name(d.purpose),
                 "method": d.method.as_str(),
-                "expires_at": d.expires_at.to_rfc3339(),
+                "expires_at": rfc3339_offset(d.expires_at),
                 "user_id": d.user_id.to_string(),
             }))
             .map_err(|e| failed("webhook", e))?;
@@ -139,7 +145,7 @@ mod webhook {
                 .post(self.url.clone())
                 .header("content-type", "application/json");
             if let Some(secret) = &self.secret {
-                let ts = Utc::now().timestamp();
+                let ts = OffsetDateTime::now_utc().unix_timestamp();
                 req = req.header(WEBHOOK_TIMESTAMP_HEADER, ts.to_string()).header(
                     WEBHOOK_SIGNATURE_HEADER,
                     signature(secret.expose(), ts, &body),
@@ -155,5 +161,15 @@ mod webhook {
                 .map_err(|e| failed("webhook", e))?;
             crate::http::check("webhook", res).await
         }
+    }
+}
+
+/// The expiry as the webhook has always carried it: RFC 3339 with `+00:00`
+/// and 0, 3, 6 or 9 fractional digits.
+fn rfc3339_offset(at: time::OffsetDateTime) -> String {
+    let text = z_auth::utils::rfc3339::format(at);
+    match text.strip_suffix('Z') {
+        Some(base) => format!("{base}+00:00"),
+        None => text,
     }
 }

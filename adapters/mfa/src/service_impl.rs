@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::user::model::UserWithRoles;
@@ -230,7 +230,7 @@ impl MfaServiceImpl {
         f: &Factor,
         code: String,
         purpose: CodePurpose,
-        expires_at: DateTime<Utc>,
+        expires_at: OffsetDateTime,
     ) -> Result<(), AuthError> {
         let destination = self.destination(f)?;
         self.sender()?
@@ -245,7 +245,7 @@ impl MfaServiceImpl {
             .await
     }
 
-    fn sent(outcome: SendOutcome) -> Result<DateTime<Utc>, AuthError> {
+    fn sent(outcome: SendOutcome) -> Result<OffsetDateTime, AuthError> {
         match outcome {
             SendOutcome::Stored { expires_at } => Ok(expires_at),
             SendOutcome::TooSoon | SendOutcome::LimitReached => Err(AuthError::CodeResendTooSoon),
@@ -258,7 +258,7 @@ impl MfaServiceImpl {
         &self,
         f: &Factor,
         purpose: CodePurpose,
-    ) -> Result<DateTime<Utc>, AuthError> {
+    ) -> Result<OffsetDateTime, AuthError> {
         let code = codes::numeric_code(self.settings.codes.digits)?;
         let hash = self.hasher.hash(CodeKind::Delivered, f.id, code.as_bytes());
         let expires_at = Self::sent(
@@ -308,7 +308,7 @@ impl MfaServiceImpl {
         pending: Option<&PendingCode>,
         owner: Uuid,
         code: &str,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
     ) -> bool {
         let Some(pending) = pending else {
             return false;
@@ -334,7 +334,7 @@ impl MfaServiceImpl {
         Ok(totp::verify(
             &secret,
             code,
-            self.clock.now().timestamp(),
+            self.clock.now().unix_timestamp(),
             &params,
             self.settings.totp.skew_steps,
         ))

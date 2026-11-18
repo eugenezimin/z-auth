@@ -13,8 +13,11 @@ use z_auth::security::token::model::{Revocation, RevocationScope, RevocationStat
 const T: i64 = 1_795_000_000;
 
 /// The one place these tests build a timestamp.
-fn at(secs: i64, nanos: u32) -> chrono::DateTime<chrono::Utc> {
-    chrono::DateTime::from_timestamp(secs, nanos).unwrap()
+fn at(secs: i64, nanos: u32) -> time::OffsetDateTime {
+    time::OffsetDateTime::from_unix_timestamp(secs)
+        .unwrap()
+        .replace_nanosecond(nanos)
+        .unwrap()
 }
 
 const REVOCATION: &str = r#"{"id":"00000000-0000-0000-0000-000000000001","scope":{"type":"session","id":"00000000-0000-0000-0000-000000000002"},"reason":"account_changed","status":"pending","origin_node":"00000000-0000-0000-0000-000000000003","revoked_at":"2026-11-18T11:06:40Z","expires_at":"2026-11-18T11:11:40.500Z","enforced_at":"2026-11-18T11:06:41.123456789Z","enforced_by":null}"#;

@@ -227,7 +227,7 @@ async fn test_merges_write_only_when_something_changes() {
 
     let mut enforced = stored.clone();
     enforced.status = RevocationStatus::Enforced;
-    enforced.enforced_at = Some(stored.revoked_at + chrono::Duration::seconds(5));
+    enforced.enforced_at = Some(stored.revoked_at + time::Duration::seconds(5));
     enforced.enforced_by = Some(Uuid::new_v4());
     assert_eq!(
         store.merge_revocation(&enforced).await.unwrap(),

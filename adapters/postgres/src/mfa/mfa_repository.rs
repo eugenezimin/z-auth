@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth_mfa::model::{
@@ -81,7 +81,7 @@ impl MfaRepository for PgMfaRepository {
     async fn find_factor(
         &self,
         factor_id: Uuid,
-    ) -> Result<Option<(Factor, DateTime<Utc>)>, AuthError> {
+    ) -> Result<Option<(Factor, OffsetDateTime)>, AuthError> {
         let row: Option<FactorRow> = sqlx::query_as(q::FIND_FACTOR)
             .bind(factor_id)
             .fetch_optional(&self.pool)
@@ -179,7 +179,7 @@ impl MfaRepository for PgMfaRepository {
         code_hash: [u8; 32],
         limits: CodeLimits,
     ) -> Result<SendOutcome, AuthError> {
-        let stored: Option<DateTime<Utc>> = sqlx::query_scalar(q::SET_FACTOR_CODE)
+        let stored: Option<OffsetDateTime> = sqlx::query_scalar(q::SET_FACTOR_CODE)
             .bind(factor_id)
             .bind(code_hash.as_slice())
             .bind(limits.ttl)
@@ -279,7 +279,7 @@ impl MfaRepository for PgMfaRepository {
     async fn find_challenge(
         &self,
         challenge_id: Uuid,
-    ) -> Result<Option<(Challenge, DateTime<Utc>)>, AuthError> {
+    ) -> Result<Option<(Challenge, OffsetDateTime)>, AuthError> {
         let row: Option<ChallengeRow> = sqlx::query_as(q::FIND_CHALLENGE)
             .bind(challenge_id)
             .fetch_optional(&self.pool)
@@ -312,7 +312,7 @@ impl MfaRepository for PgMfaRepository {
         code: NewCode,
         limits: CodeLimits,
     ) -> Result<SendOutcome, AuthError> {
-        let stored: Option<DateTime<Utc>> = sqlx::query_scalar(q::SET_CHALLENGE_CODE)
+        let stored: Option<OffsetDateTime> = sqlx::query_scalar(q::SET_CHALLENGE_CODE)
             .bind(challenge_id)
             .bind(code.factor_id)
             .bind(code.code_hash.as_slice())

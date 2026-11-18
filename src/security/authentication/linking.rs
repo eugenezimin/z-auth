@@ -123,7 +123,7 @@ impl AccountLinkService for AccountLinkServiceImpl {
         if now >= session.idle_expires_at || now >= session.absolute_expires_at {
             return Err(AuthError::SessionExpired);
         }
-        let age = (now - session.created_at).to_std().unwrap_or_default();
+        let age = std::time::Duration::try_from(now - session.created_at).unwrap_or_default();
         if age > self.max_auth_age {
             return Err(AuthError::ReauthenticationRequired);
         }

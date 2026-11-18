@@ -3,7 +3,7 @@
 //! hashes and checks the codes.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 
@@ -31,7 +31,7 @@ pub struct CodeDelivery {
     pub destination: String,
     pub code: String,
     pub purpose: CodePurpose,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
 }
 
 #[async_trait]

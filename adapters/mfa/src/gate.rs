@@ -21,7 +21,7 @@
 //! [`verify`]: SecondFactorGate::verify
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::user::model::UserWithRoles;
@@ -43,7 +43,7 @@ impl MfaServiceImpl {
     pub(crate) async fn open_challenge(
         &self,
         token: &str,
-    ) -> Result<(Challenge, DateTime<Utc>), AuthError> {
+    ) -> Result<(Challenge, OffsetDateTime), AuthError> {
         let (id, secret) =
             codes::parse_challenge_token(token).ok_or(AuthError::ChallengeExpired)?;
         let (challenge, now) = self
@@ -80,7 +80,7 @@ impl MfaServiceImpl {
     async fn prove(
         &self,
         challenge: &Challenge,
-        now: DateTime<Utc>,
+        now: OffsetDateTime,
         method: Option<ProofMethod>,
         code: &str,
     ) -> Result<Option<&'static str>, AuthError> {

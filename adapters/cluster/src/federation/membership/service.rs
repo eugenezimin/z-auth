@@ -8,8 +8,8 @@ use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use futures_util::future::join_all;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::config::ClusterConfig;
@@ -40,8 +40,9 @@ fn rejected(reason: &str) -> AuthError {
     AuthError::ClusterMessageRejected(reason.into())
 }
 
-fn chrono(d: Duration) -> chrono::Duration {
-    chrono::Duration::from_std(d).unwrap_or(chrono::Duration::MAX)
+/// A configured `std` duration as a `time` span, saturating at the maximum.
+fn span(d: Duration) -> time::Duration {
+    time::Duration::try_from(d).unwrap_or(time::Duration::MAX)
 }
 
 /// Fan-out counts.
@@ -224,12 +225,12 @@ impl FederationClusterService {
 
     // ── sending ─────────────────────────────────────────────────────────────
 
-    fn now(&self) -> DateTime<Utc> {
+    fn now(&self) -> OffsetDateTime {
         self.clock.now()
     }
 
-    fn beat(&self) -> chrono::Duration {
-        chrono(self.config.heartbeat)
+    fn beat(&self) -> time::Duration {
+        span(self.config.heartbeat)
     }
 
     fn seal(&self, payload: ClusterMessage) -> Result<ClusterEnvelope, AuthError> {
@@ -318,7 +319,7 @@ impl FederationClusterService {
         payload: ClusterMessage,
     ) -> Result<Option<ClusterMessage>, AuthError> {
         let link = self.config.link;
-        let cooldown = chrono(link.breaker_cooldown);
+        let cooldown = span(link.breaker_cooldown);
         for target in self.state.link_targets(cluster, self.now(), cooldown) {
             for attempt in 0..link.retry_attempts {
                 match self.send_to(&target, payload.clone()).await {
@@ -397,7 +398,7 @@ impl FederationClusterService {
 
     /// Merge a `Welcome`; returns clusters that came back alive and whether
     /// the directory changed.
-    async fn merge_welcome(&self, w: Welcome, now: DateTime<Utc>) -> (Vec<String>, bool) {
+    async fn merge_welcome(&self, w: Welcome, now: OffsetDateTime) -> (Vec<String>, bool) {
         let local = self.state.local();
         let mut alive = Vec::new();
         let mut directory_changed = false;
@@ -570,7 +571,7 @@ impl FederationClusterService {
 
     /// Warnings and evictions.  Returns the number evicted, or `None` if
     /// this instance fenced itself.
-    async fn liveness(&self, now: DateTime<Utc>) -> Option<usize> {
+    async fn liveness(&self, now: OffsetDateTime) -> Option<usize> {
         let local = self.state.local_id();
         let beat = self.beat();
         if self
@@ -681,7 +682,7 @@ impl FederationClusterService {
         delivery
     }
 
-    async fn sibling_snapshots(&self, now: DateTime<Utc>) -> usize {
+    async fn sibling_snapshots(&self, now: OffsetDateTime) -> usize {
         let cooldown = self.beat() * CLUSTER_SNAPSHOT_COOLDOWN_BEATS as i32;
         let mut merged = 0;
         for peer in self.state.snapshots_due(now, cooldown) {
@@ -699,9 +700,9 @@ impl FederationClusterService {
         merged
     }
 
-    async fn links(&self, now: DateTime<Utc>) {
+    async fn links(&self, now: OffsetDateTime) {
         let local = self.state.local_id();
-        let cooldown = chrono(self.config.link.breaker_cooldown);
+        let cooldown = span(self.config.link.breaker_cooldown);
         for cluster in self.state.remote_clusters() {
             if self.is_fenced() {
                 return;
@@ -711,7 +712,7 @@ impl FederationClusterService {
                 if first == Some(local)
                     && self
                         .state
-                        .reprobe_due(&cluster, now, chrono(self.config.link.dead_reprobe))
+                        .reprobe_due(&cluster, now, span(self.config.link.dead_reprobe))
                 {
                     self.reprobe(&cluster).await;
                 }
@@ -866,9 +867,8 @@ impl ClusterService for FederationClusterService {
             }
         }
 
-        let retired_ttl = chrono(self.config.tombstone_ttl);
-        self.state
-            .prune_seen(now - chrono(self.config.max_skew) * 2);
+        let retired_ttl = span(self.config.tombstone_ttl);
+        self.state.prune_seen(now - span(self.config.max_skew) * 2);
         self.state.prune_retired(now, retired_ttl);
         if round.is_multiple_of(CLUSTER_SEED_PROBE_EVERY) {
             let _ = self.nodes.purge_retired(self.config.tombstone_ttl).await;
@@ -891,7 +891,7 @@ impl ClusterService for FederationClusterService {
         if !self.signer.verify(&envelope) {
             return Err(rejected("bad signature"));
         }
-        if (now - envelope.sent_at).abs() > chrono(self.config.max_skew) {
+        if (now - envelope.sent_at).abs() > span(self.config.max_skew) {
             return Err(rejected("timestamp outside the allowed window"));
         }
         let from = envelope.from;

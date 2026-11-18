@@ -1,6 +1,6 @@
 //! The text of code messages.
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use z_auth_mfa::CodePurpose;
 
 /// An email: subject, plain-text and HTML bodies.
@@ -12,8 +12,8 @@ pub struct EmailMessage {
 }
 
 /// Whole minutes until `expires_at` (at least 1).
-fn minutes(expires_at: DateTime<Utc>, now: DateTime<Utc>) -> i64 {
-    (((expires_at - now).num_seconds() + 59) / 60).max(1)
+fn minutes(expires_at: OffsetDateTime, now: OffsetDateTime) -> i64 {
+    (((expires_at - now).whole_seconds() + 59) / 60).max(1)
 }
 
 fn plural(n: i64) -> &'static str {
@@ -24,8 +24,8 @@ pub fn email(
     sender_name: &str,
     purpose: CodePurpose,
     code: &str,
-    expires_at: DateTime<Utc>,
-    now: DateTime<Utc>,
+    expires_at: OffsetDateTime,
+    now: OffsetDateTime,
 ) -> EmailMessage {
     let (subject, intro) = match purpose {
         CodePurpose::Login => (
@@ -69,8 +69,8 @@ pub fn sms(
     sender_name: &str,
     purpose: CodePurpose,
     code: &str,
-    expires_at: DateTime<Utc>,
-    now: DateTime<Utc>,
+    expires_at: OffsetDateTime,
+    now: OffsetDateTime,
 ) -> String {
     let what = match purpose {
         CodePurpose::Login => "sign-in code",

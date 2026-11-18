@@ -10,8 +10,8 @@
 //! membership that is not found changes nothing.  Memberships are read
 //! with their organization's and department's current names.
 
-use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
+use time::OffsetDateTime;
 use uuid::Uuid;
 use z_auth::AuthError;
 use z_auth::identity::organization::{
@@ -29,8 +29,8 @@ struct OrganizationRow {
     id: Uuid,
     name: String,
     description: Option<String>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 impl From<OrganizationRow> for Organization {
@@ -51,8 +51,8 @@ struct DepartmentRow {
     organization_id: Uuid,
     name: String,
     description: Option<String>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 impl From<DepartmentRow> for Department {
@@ -79,8 +79,8 @@ struct MembershipRow {
     department_name: Option<String>,
     title: Option<String>,
     is_primary: bool,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 impl From<MembershipRow> for Membership {
